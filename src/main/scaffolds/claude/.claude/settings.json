@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl get:*)",
+      "Bash(kubectl describe:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(kubectl explain:*)",
+      "Bash(kubectl api-resources:*)",
+      "Bash(kubectl api-versions:*)",
+      "Bash(kubectl auth can-i:*)",
+      "Bash(kubectl top:*)",
+      "Bash(kubectl version:*)",
+      "Bash(helm list:*)",
+      "Bash(helm status:*)",
+      "Bash(helm get:*)",
+      "Bash(helm history:*)",
+      "Bash(helm show:*)",
+      "Bash(helm search:*)",
+      "Bash(helm version:*)"
+    ]
+  }
+}

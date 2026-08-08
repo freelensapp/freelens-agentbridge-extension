@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "kubectl get *": "allow",
+      "kubectl describe *": "allow",
+      "kubectl logs *": "allow",
+      "kubectl explain *": "allow",
+      "kubectl api-resources *": "allow",
+      "kubectl api-versions *": "allow",
+      "kubectl auth can-i *": "allow",
+      "kubectl top *": "allow",
+      "kubectl version *": "allow",
+      "helm list *": "allow",
+      "helm status *": "allow",
+      "helm get *": "allow",
+      "helm history *": "allow",
+      "helm show *": "allow",
+      "helm search *": "allow",
+      "helm version *": "allow"
+    }
+  }
+}
