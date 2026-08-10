@@ -1,10 +1,15 @@
-export type EditorRole = "instructions" | "permissions" | "settings";
+export type EditorRole = "instructions" | "permissions" | "settings" | "command";
 
 export interface EditorDefinition {
   readonly path: string;
   readonly title: string;
   readonly language: "json" | "markdown";
   readonly role: EditorRole;
+  // Optional scaffold-relative source path when the bundled source file lives at
+  // a different location than the seeded target `path`. Used for the Claude Code
+  // command, whose seeded target is under `.claude/` while its source is kept
+  // flat under `commands/`. Defaults to `path` when omitted.
+  readonly source?: string;
 }
 
 export interface AgentBridgeProvider {
@@ -39,8 +44,14 @@ export const agentBridgeProviders = [
         language: "json",
         role: "permissions",
       },
+      {
+        path: ".opencode/command/build-cluster-map.md",
+        title: "Command (/build-cluster-map)",
+        language: "markdown",
+        role: "command",
+      },
     ],
-    resetPaths: [".opencode/opencode.json"],
+    resetPaths: [".opencode/opencode.json", ".opencode/command/build-cluster-map.md"],
   },
   {
     id: "claude",
@@ -62,8 +73,15 @@ export const agentBridgeProviders = [
         language: "json",
         role: "permissions",
       },
+      {
+        path: ".claude/commands/build-cluster-map.md",
+        title: "Command (/build-cluster-map)",
+        language: "markdown",
+        role: "command",
+        source: "commands/build-cluster-map.md",
+      },
     ],
-    resetPaths: [".claude/settings.json"],
+    resetPaths: [".claude/settings.json", ".claude/commands/build-cluster-map.md"],
   },
   {
     id: "copilot",
@@ -85,8 +103,14 @@ export const agentBridgeProviders = [
         language: "json",
         role: "settings",
       },
+      {
+        path: ".github/skills/build-cluster-map/SKILL.md",
+        title: "Skill (build-cluster-map)",
+        language: "markdown",
+        role: "command",
+      },
     ],
-    resetPaths: [".github/copilot/settings.json"],
+    resetPaths: [".github/copilot/settings.json", ".github/skills/build-cluster-map/SKILL.md"],
   },
 ] as const satisfies readonly AgentBridgeProvider[];
 

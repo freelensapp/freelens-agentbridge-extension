@@ -34,8 +34,14 @@ describe("agentBridgeProviders", () => {
             language: "json",
             role: "permissions",
           },
+          {
+            path: ".opencode/command/build-cluster-map.md",
+            title: "Command (/build-cluster-map)",
+            language: "markdown",
+            role: "command",
+          },
         ],
-        resetPaths: [".opencode/opencode.json"],
+        resetPaths: [".opencode/opencode.json", ".opencode/command/build-cluster-map.md"],
       },
       {
         id: "claude",
@@ -57,8 +63,15 @@ describe("agentBridgeProviders", () => {
             language: "json",
             role: "permissions",
           },
+          {
+            path: ".claude/commands/build-cluster-map.md",
+            title: "Command (/build-cluster-map)",
+            language: "markdown",
+            role: "command",
+            source: "commands/build-cluster-map.md",
+          },
         ],
-        resetPaths: [".claude/settings.json"],
+        resetPaths: [".claude/settings.json", ".claude/commands/build-cluster-map.md"],
       },
       {
         id: "copilot",
@@ -80,8 +93,14 @@ describe("agentBridgeProviders", () => {
             language: "json",
             role: "settings",
           },
+          {
+            path: ".github/skills/build-cluster-map/SKILL.md",
+            title: "Skill (build-cluster-map)",
+            language: "markdown",
+            role: "command",
+          },
         ],
-        resetPaths: [".github/copilot/settings.json"],
+        resetPaths: [".github/copilot/settings.json", ".github/skills/build-cluster-map/SKILL.md"],
       },
     ]);
   });

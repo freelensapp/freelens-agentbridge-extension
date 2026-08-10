@@ -154,7 +154,8 @@ export function prepareProviderWorkspace(
     const target = resolveDeclaredFile(workdir, provider.id, editor.path);
     if (existsSync(target)) continue;
     mkdirSync(path.dirname(target), { recursive: true });
-    copyFileSync(path.join(scaffold, editor.path), target);
+    const sourceRel = (editor as { source?: string }).source ?? editor.path;
+    copyFileSync(path.join(scaffold, ...sourceRel.split(/[\\/]+/)), target);
     seeded = true;
   }
 

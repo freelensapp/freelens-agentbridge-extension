@@ -1,5 +1,6 @@
 import { Renderer } from "@freelensapp/extensions";
 import { AgentBridgePage } from "./agentbridge-page";
+import { NamespaceMapMenuItem } from "./namespace-menu-item";
 import { EditorCommandHint, EditorCommandSetting, ProbeTimeoutHint, ProbeTimeoutSetting } from "./settings-page";
 
 const {
@@ -24,6 +25,14 @@ export default class AgentBridgeRendererExtension extends Renderer.LensExtension
       title: "Freelens Agent Bridge",
       target: { pageId: "agentbridge" },
       components: { Icon: AgentBridgeIcon },
+    },
+  ];
+
+  kubeObjectMenuItems = [
+    {
+      kind: "Namespace",
+      apiVersions: ["v1"],
+      components: { MenuItem: NamespaceMapMenuItem },
     },
   ];
 
