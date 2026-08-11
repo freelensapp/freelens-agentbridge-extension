@@ -19,13 +19,6 @@ export interface AgentBridgeProvider {
   readonly versionArgs: readonly string[];
   readonly docsUrl: string;
   readonly launchArgs: readonly string[];
-  // Flag(s) that precede an inline prompt passed on the launch command line so a
-  // bundled command/skill can be invoked directly, without typing into the CLI's
-  // REPL after boot. An empty array means the prompt is a bare positional
-  // argument (Claude Code seeds an interactive session that way). OpenCode's
-  // `run` subcommand does not resolve slash commands, so its interactive TUI
-  // `--prompt` flag is used instead; Copilot CLI exposes `-p` for one-shot runs.
-  readonly promptFlag: readonly string[];
   readonly editors: readonly EditorDefinition[];
   readonly resetPaths: readonly string[];
 }
@@ -38,7 +31,6 @@ export const agentBridgeProviders = [
     versionArgs: ["--version"],
     docsUrl: "https://opencode.ai/docs/",
     launchArgs: [],
-    promptFlag: ["--prompt"],
     editors: [
       {
         path: "AGENTS.md",
@@ -68,7 +60,6 @@ export const agentBridgeProviders = [
     versionArgs: ["--version"],
     docsUrl: "https://docs.anthropic.com/en/docs/claude-code/setup",
     launchArgs: [],
-    promptFlag: [],
     editors: [
       {
         path: "CLAUDE.md",
@@ -99,7 +90,6 @@ export const agentBridgeProviders = [
     versionArgs: ["--version"],
     docsUrl: "https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli",
     launchArgs: [],
-    promptFlag: ["-p"],
     editors: [
       {
         path: ".github/copilot-instructions.md",

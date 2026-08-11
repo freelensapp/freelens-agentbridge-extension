@@ -5,10 +5,6 @@ vi.mock("./agentbridge-page", () => ({
   AgentBridgePage: () => null,
 }));
 
-vi.mock("./namespace-menu-item", () => ({
-  NamespaceMapMenuItem: () => null,
-}));
-
 vi.mock("./settings-page", () => ({
   ProbeTimeoutSetting: () => null,
   ProbeTimeoutHint: () => null,
@@ -38,15 +34,10 @@ describe("AgentBridgeRendererExtension sidebar registration", () => {
     expect(icon.props).toMatchObject({ className: "sidebar-icon", material: "terminal" });
   });
 
-  it("registers a Namespace kube-object menu item", () => {
+  it("does not register any kube-object menu items", () => {
     const extension = new AgentBridgeRendererExtension({} as never);
 
-    expect(extension.kubeObjectMenuItems).toHaveLength(1);
-
-    const [item] = extension.kubeObjectMenuItems;
-
-    expect(item).toMatchObject({ kind: "Namespace", apiVersions: ["v1"] });
-    expect(item.components.MenuItem).toBeTypeOf("function");
+    expect(extension.kubeObjectMenuItems).toBeUndefined();
   });
 
   it("registers the probe timeout preference", () => {

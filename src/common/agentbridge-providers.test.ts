@@ -21,7 +21,6 @@ describe("agentBridgeProviders", () => {
         versionArgs: ["--version"],
         docsUrl: "https://opencode.ai/docs/",
         launchArgs: [],
-        promptFlag: ["--prompt"],
         editors: [
           {
             path: "AGENTS.md",
@@ -51,7 +50,6 @@ describe("agentBridgeProviders", () => {
         versionArgs: ["--version"],
         docsUrl: "https://docs.anthropic.com/en/docs/claude-code/setup",
         launchArgs: [],
-        promptFlag: [],
         editors: [
           {
             path: "CLAUDE.md",
@@ -82,7 +80,6 @@ describe("agentBridgeProviders", () => {
         versionArgs: ["--version"],
         docsUrl: "https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli",
         launchArgs: [],
-        promptFlag: ["-p"],
         editors: [
           {
             path: ".github/copilot-instructions.md",
