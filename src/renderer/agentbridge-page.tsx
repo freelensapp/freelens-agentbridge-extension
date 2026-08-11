@@ -180,6 +180,10 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
       <div
         style={{
           padding: "var(--padding, 16px)",
+          maxWidth: "900px",
+          margin: "0 auto",
+          width: "100%",
+          boxSizing: "border-box",
           display: "flex",
           flexDirection: "column",
           gap: "16px",
