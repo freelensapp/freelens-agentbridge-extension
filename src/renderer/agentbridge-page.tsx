@@ -209,7 +209,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
         </div>
 
         <p style={{ margin: 0 }}>Select an AI CLI for this cluster. Provider workspaces are isolated per cluster.</p>
-        <div style={{ maxWidth: "420px" }}>
+        <div style={{ maxWidth: "420px", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
           <Renderer.Component.Select
             id="agentbridge-provider-select"
             themeName="lens"
@@ -219,11 +219,11 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
             value={providerId ?? null}
             onChange={(option: { value: AgentBridgeProviderId } | null) => option && selectProvider(option.value)}
           />
+          <p style={{ margin: 0, fontSize: "0.85em", opacity: 0.7 }}>
+            CLI permissions are convenience guardrails. Kubernetes RBAC and kubeconfig permissions remain the security
+            boundary.
+          </p>
         </div>
-        <p style={{ margin: 0 }}>
-          CLI permissions are convenience guardrails. Kubernetes RBAC and kubeconfig permissions remain the security
-          boundary.
-        </p>
 
         {!clusterId && <p style={{ margin: 0 }}>No active cluster. Open a cluster first.</p>}
         {hasCurrentSelection && state.status === "missing" && provider && (
