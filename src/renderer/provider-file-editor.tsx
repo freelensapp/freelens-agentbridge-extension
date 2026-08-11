@@ -112,7 +112,7 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
           : { text: "", color: "#888" };
 
   return (
-    <div>
+    <div style={{ maxWidth: "70%", width: "100%", alignSelf: "center" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
         <strong>{editor.title}</strong>
         {badge.text && <span style={{ color: badge.color, fontSize: "0.85em" }}>{badge.text}</span>}
@@ -129,6 +129,7 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
               minimap: { enabled: false },
               scrollBeyondLastLine: false,
               automaticLayout: true,
+              scrollbar: { alwaysConsumeMouseWheel: false },
             }}
             loading={<p style={{ padding: "0.5rem" }}>Loading editor...</p>}
           />
