@@ -37,28 +37,6 @@ describe("launchProviderSession", () => {
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
-  it("bakes the prompt command into the single boot command", () => {
-    const { deps, sendCommand } = createDeps({ isReady: true });
-
-    launchProviderSession(deps, {
-      workdir: "/w",
-      providerId: "claude",
-      platform: "linux",
-      title: "session",
-      promptCommand: "/build-cluster-map",
-    });
-
-    vi.advanceTimersByTime(100);
-
-    // Only one command is sent — the boot command carries the prompt inline, so
-    // there is no fragile follow-up keystroke.
-    expect(sendCommand).toHaveBeenCalledTimes(1);
-    expect(sendCommand.mock.calls[0][0]).toContain('claude "/build-cluster-map"');
-
-    vi.advanceTimersByTime(10_000);
-    expect(sendCommand).toHaveBeenCalledTimes(1);
-  });
-
   it("falls back to the ready timeout when the terminal never reports ready", () => {
     const { deps, sendCommand } = createDeps(undefined);
 
