@@ -5,7 +5,7 @@ import * as monacoEditor from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { useEffect, useRef, useState } from "react";
 import { createSaveLifecycle } from "./save-lifecycle";
-import { sectionThemeStore } from "./section-theme";
+import { resolveHostMonacoTheme } from "./section-theme";
 
 import type { EditorDefinition } from "../common/agentbridge-providers";
 
@@ -131,7 +131,7 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
           <Monaco
             language={editor.language}
             value={content}
-            theme={sectionThemeStore.monacoTheme}
+            theme={resolveHostMonacoTheme()}
             onChange={onChange}
             options={{
               wordWrap: "on",
