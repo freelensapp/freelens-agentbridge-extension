@@ -129,6 +129,7 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
               minimap: { enabled: false },
               scrollBeyondLastLine: false,
               automaticLayout: true,
+              scrollbar: { alwaysConsumeMouseWheel: false },
             }}
             loading={<p style={{ padding: "0.5rem" }}>Loading editor...</p>}
           />
