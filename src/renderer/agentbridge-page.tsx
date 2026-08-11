@@ -8,7 +8,6 @@ import { launchProviderSession } from "./launch-session";
 import { ProviderFileEditor } from "./provider-file-editor";
 import { loadProvider, loadSelectedProvider, saveSelectedProvider } from "./provider-selection";
 import { createRendererLaunchDeps } from "./renderer-launch";
-import { type SectionTheme, sectionThemeStore } from "./section-theme";
 
 import type { AgentBridgeProviderId } from "../common/agentbridge-providers";
 import type { ProviderLoadResult } from "./provider-selection";
@@ -20,31 +19,6 @@ type PageState = { status: "idle" | "loading" } | ProviderLoadResult;
 interface AgentBridgePageProps {
   extension: Renderer.LensExtension;
 }
-
-const themeOptions: { value: SectionTheme; label: string; icon: string }[] = [
-  { value: "auto", label: "Auto", icon: "brightness_auto" },
-  { value: "dark", label: "Dark", icon: "dark_mode" },
-  { value: "light", label: "Light", icon: "light_mode" },
-];
-
-const SectionThemeToggle = observer(function SectionThemeToggle() {
-  return (
-    <div style={{ display: "flex", gap: "4px" }}>
-      {themeOptions.map((option) => (
-        <Renderer.Component.Button
-          key={option.value}
-          outlined={sectionThemeStore.pref !== option.value}
-          primary={sectionThemeStore.pref === option.value}
-          tooltip={`${option.label} theme`}
-          onClick={() => sectionThemeStore.setPref(option.value)}
-        >
-          <Renderer.Component.Icon material={option.icon} small />
-          {option.label}
-        </Renderer.Component.Button>
-      ))}
-    </div>
-  );
-});
 
 export const AgentBridgePage = observer(function AgentBridgePage({ extension: _extension }: AgentBridgePageProps) {
   const clusterId = Renderer.Catalog.getActiveCluster()?.id;
@@ -189,24 +163,21 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
           gap: "16px",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Renderer.Component.SubTitle title={provider ? `${provider.name} Session` : "Freelens Agent Bridge"}>
-            {hasCurrentSelection && state.status === "ready" && (
-              <>
-                <Renderer.Component.StatusBrick className="running" /> {provider?.name} v{state.version}
-              </>
-            )}
-            {hasCurrentSelection && state.status === "loading" && (
-              <>
-                <Renderer.Component.StatusBrick className="waiting" /> Checking {provider?.name}...
-              </>
-            )}
-            {hasCurrentSelection && (state.status === "missing" || state.status === "error") && (
-              <Renderer.Component.StatusBrick className="failed" />
-            )}
-          </Renderer.Component.SubTitle>
-          <SectionThemeToggle />
-        </div>
+        <Renderer.Component.SubTitle title={provider ? `${provider.name} Session` : "Freelens Agent Bridge"}>
+          {hasCurrentSelection && state.status === "ready" && (
+            <>
+              <Renderer.Component.StatusBrick className="running" /> {provider?.name} v{state.version}
+            </>
+          )}
+          {hasCurrentSelection && state.status === "loading" && (
+            <>
+              <Renderer.Component.StatusBrick className="waiting" /> Checking {provider?.name}...
+            </>
+          )}
+          {hasCurrentSelection && (state.status === "missing" || state.status === "error") && (
+            <Renderer.Component.StatusBrick className="failed" />
+          )}
+        </Renderer.Component.SubTitle>
 
         <p style={{ margin: 0 }}>Select an AI CLI for this cluster. Provider workspaces are isolated per cluster.</p>
         <div style={{ maxWidth: "420px", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
