@@ -37,7 +37,7 @@ describe("launchProviderSession", () => {
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
-  it("sends the follow-up command after the delay", () => {
+  it("bakes the prompt command into the single boot command", () => {
     const { deps, sendCommand } = createDeps({ isReady: true });
 
     launchProviderSession(deps, {
@@ -45,16 +45,18 @@ describe("launchProviderSession", () => {
       providerId: "claude",
       platform: "linux",
       title: "session",
-      followUpCommand: "/build-cluster-map",
-      followUpDelayMs: 1000,
+      promptCommand: "/build-cluster-map",
     });
 
     vi.advanceTimersByTime(100);
-    expect(sendCommand).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(1000);
-    expect(sendCommand).toHaveBeenCalledTimes(2);
-    expect(sendCommand.mock.calls[1][0]).toBe("/build-cluster-map");
+    // Only one command is sent — the boot command carries the prompt inline, so
+    // there is no fragile follow-up keystroke.
+    expect(sendCommand).toHaveBeenCalledTimes(1);
+    expect(sendCommand.mock.calls[0][0]).toContain('claude "/build-cluster-map"');
+
+    vi.advanceTimersByTime(10_000);
+    expect(sendCommand).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to the ready timeout when the terminal never reports ready", () => {

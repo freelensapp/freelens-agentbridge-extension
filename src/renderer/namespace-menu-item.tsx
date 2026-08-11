@@ -45,7 +45,7 @@ export function NamespaceMapMenuItem({ object, toolbar }: NamespaceMenuItemProps
         providerId,
         platform: process.platform,
         title: `Agent Bridge — map ${namespace}`,
-        followUpCommand: getClusterMapCommand(providerId, namespace),
+        promptCommand: getClusterMapCommand(providerId, namespace),
       });
     } catch (error) {
       Notifications.error(`Failed to prepare workspace: ${error instanceof Error ? error.message : String(error)}`);
