@@ -249,7 +249,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
         )}
         {hasCurrentSelection && state.status === "ready" && provider && clusterId && (
           <>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
               <Renderer.Component.Button
                 primary
                 label={`Open ${provider.name} session`}
