@@ -180,6 +180,10 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
       <div
         style={{
           padding: "var(--padding, 16px)",
+          maxWidth: "900px",
+          margin: "0 auto",
+          width: "100%",
+          boxSizing: "border-box",
           display: "flex",
           flexDirection: "column",
           gap: "16px",
@@ -205,7 +209,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
         </div>
 
         <p style={{ margin: 0 }}>Select an AI CLI for this cluster. Provider workspaces are isolated per cluster.</p>
-        <div style={{ maxWidth: "420px" }}>
+        <div style={{ maxWidth: "420px", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
           <Renderer.Component.Select
             id="agentbridge-provider-select"
             themeName="lens"
@@ -215,11 +219,11 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
             value={providerId ?? null}
             onChange={(option: { value: AgentBridgeProviderId } | null) => option && selectProvider(option.value)}
           />
+          <p style={{ margin: 0, fontSize: "0.85em", opacity: 0.7 }}>
+            CLI permissions are convenience guardrails. Kubernetes RBAC and kubeconfig permissions remain the security
+            boundary.
+          </p>
         </div>
-        <p style={{ margin: 0 }}>
-          CLI permissions are convenience guardrails. Kubernetes RBAC and kubeconfig permissions remain the security
-          boundary.
-        </p>
 
         {!clusterId && <p style={{ margin: 0 }}>No active cluster. Open a cluster first.</p>}
         {hasCurrentSelection && state.status === "missing" && provider && (
@@ -249,41 +253,45 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
         )}
         {hasCurrentSelection && state.status === "ready" && provider && clusterId && (
           <>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <Renderer.Component.Button
-                primary
-                label={`Open ${provider.name} session`}
-                onClick={launch}
-                disabled={launching}
-                waiting={launching}
-              />
-              <Renderer.Component.Button
-                accent
-                label="Build / refresh cluster map"
-                onClick={buildClusterMap}
-                disabled={launching}
-                waiting={launching}
-              />
-              <Renderer.Component.Icon
-                material="info_outline"
-                small
-                interactive
-                tooltip={
-                  "Opens a session and runs /build-cluster-map: explores every namespace read-only " +
-                  "(one agent per namespace, up to 5 in parallel) and writes a short navigation map into " +
-                  "the instructions file, plus one skill per namespace and a cluster-level skill. " +
-                  "Idempotent — re-run any time to refresh."
-                }
-              />
-              <Renderer.Component.Button outlined label="Reveal workdir" onClick={() => void reveal()} />
-              <Renderer.Component.Button outlined onClick={() => void openInEditor()}>
-                <Renderer.Component.Icon material="code" small />
-                Open in editor
-              </Renderer.Component.Button>
-              <Renderer.Component.Button outlined onClick={() => void reset()}>
-                <Renderer.Component.Icon material="restart_alt" small />
-                Reset
-              </Renderer.Component.Button>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Renderer.Component.Button
+                  primary
+                  label={`Open ${provider.name} session`}
+                  onClick={launch}
+                  disabled={launching}
+                  waiting={launching}
+                />
+                <Renderer.Component.Button
+                  accent
+                  label="Build / refresh cluster map"
+                  onClick={buildClusterMap}
+                  disabled={launching}
+                  waiting={launching}
+                />
+                <Renderer.Component.Icon
+                  material="info_outline"
+                  small
+                  interactive
+                  tooltip={
+                    "Opens a session and runs /build-cluster-map: explores every namespace read-only " +
+                    "(one agent per namespace, up to 5 in parallel) and writes a short navigation map into " +
+                    "the instructions file, plus one skill per namespace and a cluster-level skill. " +
+                    "Idempotent — re-run any time to refresh."
+                  }
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+                <Renderer.Component.Button outlined label="Reveal workdir" onClick={() => void reveal()} />
+                <Renderer.Component.Button outlined onClick={() => void openInEditor()}>
+                  <Renderer.Component.Icon material="code" small />
+                  Open in editor
+                </Renderer.Component.Button>
+                <Renderer.Component.Button outlined onClick={() => void reset()}>
+                  <Renderer.Component.Icon material="restart_alt" small />
+                  Reset
+                </Renderer.Component.Button>
+              </div>
             </div>
             {provider.editors.map((editor) => (
               <ProviderFileEditor key={editor.path} clusterId={clusterId} providerId={provider.id} editor={editor} />

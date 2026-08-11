@@ -112,8 +112,17 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
           : { text: "", color: "#888" };
 
   return (
-    <div style={{ maxWidth: "70%", width: "100%", alignSelf: "center" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+    <div
+      style={{
+        border: "1px solid var(--borderColor)",
+        borderRadius: "4px",
+        padding: "12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.5rem",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <strong>{editor.title}</strong>
         {badge.text && <span style={{ color: badge.color, fontSize: "0.85em" }}>{badge.text}</span>}
       </div>
