@@ -110,7 +110,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     setRetry((current) => current + 1);
   }
 
-  function startSession(followUpCommand?: string, titleSuffix?: string) {
+  function startSession(promptCommand?: string, titleSuffix?: string) {
     if (!provider || state.status !== "ready") return;
     setLaunching(true);
     launchProviderSession(createRendererLaunchDeps(), {
@@ -118,7 +118,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
       providerId: provider.id,
       platform: process.platform,
       title: `${provider.name} Session${titleSuffix ? ` — ${titleSuffix}` : ""}`,
-      followUpCommand,
+      promptCommand,
       onSettled: () => setLaunching(false),
     });
   }
