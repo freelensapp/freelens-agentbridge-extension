@@ -75,9 +75,10 @@ describe("provider workspaces", () => {
     const clusterId = "legacy-cluster";
     const legacyWorkdir = path.join(userData, "opencode-sessions", clusterId);
     const targetWorkdir = computeProviderWorkdir(realpathSync(userData), clusterId, "opencode");
-    mkdirSync(path.join(legacyWorkdir, ".opencode"), { recursive: true });
+    mkdirSync(path.join(legacyWorkdir, ".opencode", "command"), { recursive: true });
     writeFileSync(path.join(legacyWorkdir, "AGENTS.md"), "# legacy\n", "utf8");
     writeFileSync(path.join(legacyWorkdir, ".opencode", "opencode.json"), "{}\n", "utf8");
+    writeFileSync(path.join(legacyWorkdir, ".opencode", "command", "build-cluster-map.md"), "# legacy\n", "utf8");
 
     expect(prepareProviderWorkspace(userData, clusterId, "opencode")).toEqual({
       workdir: targetWorkdir,

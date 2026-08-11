@@ -32,7 +32,10 @@ describe("provider scaffolds", () => {
   it.each(agentBridgeProviders)("contains every declared editor file for %s", (provider) => {
     const scaffold = resolveProviderScaffold(provider.id);
 
-    for (const editor of provider.editors) expect(existsSync(path.join(scaffold, editor.path))).toBe(true);
+    for (const editor of provider.editors) {
+      const sourceRel = (editor as { source?: string }).source ?? editor.path;
+      expect(existsSync(path.join(scaffold, sourceRel))).toBe(true);
+    }
   });
 
   it.each(agentBridgeProviders)("gives %s required cluster-agent guidance", (provider) => {
@@ -45,6 +48,33 @@ describe("provider scaffolds", () => {
     expect(content).toMatch(/ask before.*destructive.*availability/is);
     expect(content).toMatch(/RBAC.*credentials.*security boundary/is);
     expect(content).toMatch(/cluster notes/i);
+  });
+
+  it.each(agentBridgeProviders)("ships a read-only cluster-map command scaffold for %s", (provider) => {
+    const command = provider.editors.find((editor) => editor.role === "command");
+    expect(command).toBeDefined();
+
+    const sourceRel = (command as { source?: string; path: string }).source ?? (command as { path: string }).path;
+    const content = readFileSync(path.join(resolveProviderScaffold(provider.id), sourceRel), "utf8");
+
+    expect(content).toMatch(/read-only/i);
+    expect(content).toMatch(/never.*secret.*value/is);
+    expect(content).toMatch(/ns-map-<namespace>/);
+    expect(content).toMatch(/cluster-map-<cluster>/);
+    expect(content).toContain("<!-- BEGIN AGENTBRIDGE CLUSTER MAP -->");
+    expect(content).toContain("<!-- END AGENTBRIDGE CLUSTER MAP -->");
+  });
+
+  it("caps parallel exploration at 5 subagents for providers that support them", () => {
+    for (const providerId of ["opencode", "claude"] as const) {
+      const provider = agentBridgeProviders.find((candidate) => candidate.id === providerId);
+      const command = provider?.editors.find((editor) => editor.role === "command");
+      const sourceRel = (command as { source?: string; path: string }).source ?? (command as { path: string }).path;
+      const content = readFileSync(path.join(resolveProviderScaffold(providerId), sourceRel), "utf8");
+
+      expect(content).toMatch(/one subagent per namespace/i);
+      expect(content).toMatch(/at most 5 in parallel/i);
+    }
   });
 
   it("limits OpenCode shell permissions to ask plus read-only Kubernetes and Helm commands", () => {

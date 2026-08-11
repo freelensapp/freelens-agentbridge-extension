@@ -3,9 +3,11 @@ import { ipcRenderer } from "electron";
 import { observer } from "mobx-react";
 import { useEffect, useRef, useState } from "react";
 import { agentBridgeProviders, getAgentBridgeProvider } from "../common/agentbridge-providers";
-import { getLaunchCommand } from "./get-launch-command";
+import { getClusterMapCommand } from "./cluster-map-command";
+import { launchProviderSession } from "./launch-session";
 import { ProviderFileEditor } from "./provider-file-editor";
 import { loadProvider, loadSelectedProvider, saveSelectedProvider } from "./provider-selection";
+import { createRendererLaunchDeps } from "./renderer-launch";
 import { type SectionTheme, sectionThemeStore } from "./section-theme";
 
 import type { AgentBridgeProviderId } from "../common/agentbridge-providers";
@@ -108,27 +110,26 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     setRetry((current) => current + 1);
   }
 
-  function launch() {
+  function startSession(followUpCommand?: string, titleSuffix?: string) {
     if (!provider || state.status !== "ready") return;
     setLaunching(true);
-    const tabId = Renderer.Component.createTerminalTab({ title: `${provider.name} Session` }).id;
-    const command = getLaunchCommand(state.workdir, provider.id, process.platform);
-    let sent = false;
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const send = () => {
-      if (sent) return;
-      sent = true;
-      clearInterval(poll);
-      clearTimeout(timeoutId);
-      void Renderer.Component.terminalStore.sendCommand(command, { tabId, enter: true });
-      setLaunching(false);
-    };
-    const poll = setInterval(() => {
-      const api = (Renderer.Component.terminalStore as any).getTerminalApi?.(tabId);
-      if (api?.isReady) send();
-    }, 100);
+    launchProviderSession(createRendererLaunchDeps(), {
+      workdir: state.workdir,
+      providerId: provider.id,
+      platform: process.platform,
+      title: `${provider.name} Session${titleSuffix ? ` — ${titleSuffix}` : ""}`,
+      followUpCommand,
+      onSettled: () => setLaunching(false),
+    });
+  }
 
-    timeoutId = setTimeout(send, 15_000);
+  function launch() {
+    startSession();
+  }
+
+  function buildClusterMap() {
+    if (!provider) return;
+    startSession(getClusterMapCommand(provider.id), "cluster map");
   }
 
   async function reveal() {
@@ -255,6 +256,24 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
                 onClick={launch}
                 disabled={launching}
                 waiting={launching}
+              />
+              <Renderer.Component.Button
+                accent
+                label="Build / refresh cluster map"
+                onClick={buildClusterMap}
+                disabled={launching}
+                waiting={launching}
+              />
+              <Renderer.Component.Icon
+                material="info_outline"
+                small
+                interactive
+                tooltip={
+                  "Opens a session and runs /build-cluster-map: explores every namespace read-only " +
+                  "(one agent per namespace, up to 5 in parallel) and writes a short navigation map into " +
+                  "the instructions file, plus one skill per namespace and a cluster-level skill. " +
+                  "Idempotent — re-run any time to refresh."
+                }
               />
               <Renderer.Component.Button outlined label="Reveal workdir" onClick={() => void reveal()} />
               <Renderer.Component.Button outlined onClick={() => void openInEditor()}>
