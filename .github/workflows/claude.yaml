@@ -64,7 +64,7 @@ jobs:
         id: parse
         shell: bash
         run: |
-          DEFAULT_MODEL="claude-opus-4-8"
+          DEFAULT_MODEL="claude-opus-5"
           DEFAULT_RUNS_ON="ubuntu-24.04-arm"
           TEXT="${COMMENT_BODY}${REVIEW_BODY}${ISSUE_BODY}"
 
