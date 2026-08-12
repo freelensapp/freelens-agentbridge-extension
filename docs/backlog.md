@@ -11,11 +11,6 @@ high-leverage items below close that gap.
 
 ## 1. Make the agent cluster-aware
 
-- **1a. Inject live cluster context into scaffolds** — on `prepare-workspace`,
-  template the instruction file with cluster name, context, k8s
-  version/distribution, and current namespace, so the agent starts grounded
-  instead of blind. (existing: *custom instructions* / opencode's custom
-  instructions)
 - **1b. Ship curated custom subagents** — Claude Code subagents / OpenCode
   agents for K8s roles (SRE triage, security/RBAC auditor, cost optimizer),
   seeded in each provider's native format. (existing: *custom agents*)
@@ -25,9 +20,6 @@ high-leverage items below close that gap.
 - **2a. "Ask the agent" from a resource** — button/menu on pod, deployment, and
   events detail views that opens a session pre-filled with a prompt about the
   selected object. (existing: *add buttons on cluster items*)
-- **2b. Namespace documentation skill** — a bundled skill that explores a
-  namespace and writes a doc/report, invokable from the namespace view.
-  (existing: *explore and document every namespace and build a skill*)
 - **2c. Provider skills library** — a reusable, versioned set of K8s skills
   (incident triage, manifest review, drift check) seeded into the workdir.
   (existing: *skills*)
