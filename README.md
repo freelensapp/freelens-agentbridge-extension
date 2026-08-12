@@ -14,7 +14,7 @@ isolated, persistent workspace with sensible guardrails pre-configured, and
 you can tune the agent's instructions and permissions directly inside
 Freelens.
 
-<img src="docs/images/freelens-agentbridge-screenshot.png" width="800" alt="AI CLI session in Freelens sidebar">
+<img src="docs/images/agentbridge-homepage.png" width="800" alt="AI CLI session in Freelens sidebar">
 
 ## Why use it
 
@@ -64,7 +64,7 @@ wrong environment. This extension removes all of that:
 - **Reset** — restore only the managed permission file to its default;
   instructions and any other files the agent created stay untouched.
 
-<img src="docs/images/permission-settings.png" width="800" alt="OpenCode permission editor">
+<img src="docs/images/opencode-permission-settings.png" width="800" alt="OpenCode permission editor">
 
 ## Quick start
 
