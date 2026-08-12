@@ -16,7 +16,9 @@ import { resolveProviderScaffold } from "./scaffold-source";
 
 type OpenPath = (path: string) => Promise<string>;
 
-function isInside(root: string, candidate: string): boolean {
+// Exported for the artifact scanner, which needs the same win32-aware
+// containment rule. Keep this the single definition.
+export function isInside(root: string, candidate: string): boolean {
   const normalize = (value: string) => (process.platform === "win32" ? value.toLowerCase() : value);
   const normalizedRoot = normalize(path.resolve(root));
   const normalizedCandidate = normalize(path.resolve(candidate));
