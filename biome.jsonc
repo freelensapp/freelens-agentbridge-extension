@@ -22,7 +22,9 @@
     }
   },
   "css": { "formatter": { "enabled": true }, "linter": { "enabled": true } },
-  "files": { "includes": ["**", "!**/.trunk/**", "!**/build/**", "!**/dist/**"] },
+  // `.claude/skills` holds vendored third-party skill sources; they are not this
+  // project's code and are kept byte-identical to upstream, so Biome skips them.
+  "files": { "includes": ["**", "!**/.trunk/**", "!**/build/**", "!**/dist/**", "!.claude/skills/**"] },
   "formatter": {
     "attributePosition": "auto",
     "bracketSpacing": true,
