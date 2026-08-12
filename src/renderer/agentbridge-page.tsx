@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { agentBridgeProviders, getAgentBridgeProvider } from "../common/agentbridge-providers";
 import { CapabilitiesSection } from "./capabilities-section";
 import { HarnessArtifactsSection, HarnessInventoryChips } from "./harness-artifacts-section";
-import { loadHarnessInventory, shouldRefresh, summarizeInventory } from "./harness-inventory";
+import { loadHarnessInventory, opensCoalesceWindow, shouldRefresh, summarizeInventory } from "./harness-inventory";
 import { launchProviderSession } from "./launch-session";
 import { ProviderFileEditor } from "./provider-file-editor";
 import { loadProvider, loadSelectedProvider, saveSelectedProvider } from "./provider-selection";
@@ -94,6 +94,11 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
   // on unrelated re-renders.
   const [scanNow, setScanNow] = useState(() => Date.now());
   const lastScanAt = useRef<number | undefined>(undefined);
+  // A ref, not `inventoryLoading`: restoring the window fires `focus` and
+  // `visibilitychange` in the same tick, and the state update from the first
+  // handler is not visible to the second. Without this both would reach the main
+  // process, which runs the scan synchronously and start to finish.
+  const scanInFlight = useRef(false);
   // The inventory needs its own request counter: `generation` belongs to the
   // provider check above, and bumping it here would cancel that in-flight load.
   // The cluster/provider staleness check reuses the page's `currentRequest` ref.
@@ -107,12 +112,19 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     // than starting a scan that would only be thrown away.
     if (currentRequest.current.clusterId !== clusterId || currentRequest.current.providerId !== providerId) return;
 
-    const now = Date.now();
-
-    if (!force && !shouldRefresh(lastScanAt.current, now)) return;
+    if (
+      !shouldRefresh({
+        lastScanAtMs: lastScanAt.current,
+        nowMs: Date.now(),
+        scanInFlight: scanInFlight.current,
+        force,
+      })
+    )
+      return;
 
     const request = ++inventoryRequest.current;
 
+    scanInFlight.current = true;
     setInventoryLoading(true);
     void loadHarnessInventory(
       clusterId,
@@ -124,12 +136,18 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
         currentRequest.current.providerId === providerId,
     ).then((result) => {
       // Clearing the spinner is gated on the request, not on the result: a
-      // discarded stale response must not leave it spinning forever.
+      // discarded stale response must not leave it spinning forever. A
+      // superseded request leaves both flags to its successor, which owns them.
       if (inventoryRequest.current !== request) return;
+      scanInFlight.current = false;
       setInventoryLoading(false);
       if (!result) return;
-      lastScanAt.current = Date.now();
-      setScanNow(lastScanAt.current);
+      // Only a successful scan opens the coalescing window and pins the
+      // relative-age clock; a failure stays immediately retryable.
+      if (opensCoalesceWindow(result)) {
+        lastScanAt.current = Date.now();
+        setScanNow(lastScanAt.current);
+      }
       setInventory(result);
     });
   }
@@ -142,6 +160,9 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
   useEffect(() => {
     inventoryRequest.current++;
     lastScanAt.current = undefined;
+    // The bump above orphans any in-flight scan, so its response will never
+    // clear the flag: release it here or the new selection could never scan.
+    scanInFlight.current = false;
     setInventory(undefined);
     setInventoryLoading(false);
     setArtifactsExpanded(false);
@@ -226,8 +247,11 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
       return;
     }
     // A reset is a known mutation, so it must not be swallowed by the coalescing
-    // window of a scan that ran seconds ago. retryProvider re-runs the scan
-    // effect below.
+    // window of a scan that ran seconds ago, nor answered by a scan that started
+    // before the reset: orphan that one so its pre-reset numbers cannot land and
+    // hold the in-flight gate shut. retryProvider re-runs the scan effect below.
+    inventoryRequest.current++;
+    scanInFlight.current = false;
     lastScanAt.current = undefined;
     retryProvider();
   }

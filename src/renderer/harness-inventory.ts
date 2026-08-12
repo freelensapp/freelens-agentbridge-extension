@@ -89,8 +89,42 @@ export function summarizeInventory(groups: readonly HarnessArtifactGroup[], nowM
   };
 }
 
-export function shouldRefresh(lastScanAtMs: number | undefined, nowMs: number): boolean {
+// Total across kinds, carrying truncation the same way the header chips do: a
+// truncated kind makes the total a floor, so "3" would claim a precision the
+// scan never had while the chip beside it already says "2+ skills".
+export function totalLabel(groups: readonly HarnessArtifactGroup[]): string {
+  const total = groups.reduce((count, group) => count + group.count, 0);
+
+  return `${total}${groups.some((group) => group.truncated) ? "+" : ""}`;
+}
+
+export interface RefreshRequest {
+  // Completion time of the last *successful* scan; undefined until one lands.
+  readonly lastScanAtMs: number | undefined;
+  readonly nowMs: number;
+  // A scan whose response has not come back yet.
+  readonly scanInFlight: boolean;
+  // The explicit Refresh/Retry buttons, which must never be swallowed.
+  readonly force: boolean;
+}
+
+export function shouldRefresh({ lastScanAtMs, nowMs, scanInFlight, force }: RefreshRequest): boolean {
+  if (force) return true;
+  // Restoring the window fires `focus` and `visibilitychange` in the same tick.
+  // `lastScanAtMs` is only written on completion, so the coalescing window below
+  // cannot catch the second one and both scans would run in the main process in
+  // full; cancelling the loser in the renderer happens far too late.
+  if (scanInFlight) return false;
+
   return lastScanAtMs === undefined || nowMs - lastScanAtMs >= REFRESH_COALESCE_MS;
+}
+
+// The coalescing window follows the last *successful* scan (spec §4.6). An
+// error result is truthy, so gating on the result alone would let a failure open
+// the window and suppress the automatic retry a focus change would otherwise
+// trigger.
+export function opensCoalesceWindow(result: HarnessInventoryResult | undefined): boolean {
+  return result?.status === "ok";
 }
 
 // Mirrors loadProvider in provider-selection.ts: isCurrent() gates every state

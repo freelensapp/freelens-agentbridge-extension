@@ -1,6 +1,6 @@
 import { Renderer } from "@freelensapp/extensions";
 import { HARNESS_ARTIFACT_KIND_ORDER } from "../common/harness-artifacts";
-import { formatRelativeAge, iconForArtifactKind, labelForArtifactKind } from "./harness-inventory";
+import { formatRelativeAge, iconForArtifactKind, labelForArtifactKind, totalLabel } from "./harness-inventory";
 
 import type { HarnessArtifact, HarnessArtifactGroup, HarnessInventoryResult } from "../common/harness-artifacts";
 import type { InventorySummary } from "./harness-inventory";
@@ -149,7 +149,12 @@ export function HarnessArtifactsSection({
         >
           <Renderer.Component.Icon material={expanded ? "expand_less" : "expand_more"} small />
           <strong style={{ flex: 1 }}>Workspace artifacts</strong>
-          <span style={{ opacity: 0.6, fontSize: "0.85em" }}>{total}</span>
+          {/* A failed scan knows nothing about the workspace, so it gets no
+              number at all: the section is collapsed by default and on every
+              selection change, so a "0" here would be the whole story a user
+              ever sees, and an authoritative-looking zero is worse than
+              nothing (spec §4.5). */}
+          {result.status === "ok" && <span style={{ opacity: 0.6, fontSize: "0.85em" }}>{totalLabel(groups)}</span>}
         </button>
         <button
           type="button"
@@ -162,22 +167,25 @@ export function HarnessArtifactsSection({
         </button>
       </div>
 
+      {/* Outside the expanded body on purpose: the failure and its Retry are the
+          only honest content a failed scan has, and they must survive the
+          default-collapsed state (spec §4.7). */}
+      {result.status === "error" && (
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <Renderer.Component.Icon material="error_outline" small />
+          <span>{result.error}</span>
+          <button type="button" onClick={onRefresh} style={{ ...inlineButtonStyle, textDecoration: "underline" }}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {expanded && (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <span style={{ opacity: 0.7, fontSize: "0.85em" }}>
             Seeded by this extension and generated in this cluster's workspace. Your personal <code>~/.claude</code> is
             not counted.
           </span>
-
-          {result.status === "error" && (
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <Renderer.Component.Icon material="error_outline" small />
-              <span>{result.error}</span>
-              <button type="button" onClick={onRefresh} style={{ ...inlineButtonStyle, textDecoration: "underline" }}>
-                Retry
-              </button>
-            </div>
-          )}
 
           {result.status === "ok" && total === 0 && (
             <span style={{ opacity: 0.85 }}>

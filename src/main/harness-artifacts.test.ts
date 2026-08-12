@@ -1,7 +1,17 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MAX_ARTIFACTS_PER_KIND, MAX_ENTRIES_SCANNED } from "../common/harness-artifacts";
 import { listProviderArtifacts } from "./harness-artifacts";
 import { isInside, prepareProviderWorkspace } from "./provider-files";
 
@@ -19,20 +29,24 @@ import type { HarnessArtifactGroup, HarnessInventoryResult } from "../common/har
 type FsCallMode = "resolve" | "parent";
 
 const fsAudit = vi.hoisted(() => ({
-  calls: [] as { mode: "resolve" | "parent"; target: string }[],
+  calls: [] as { fn: string; mode: "resolve" | "parent"; target: string }[],
   // Paths whose lstat is made to claim "plain file" no matter what they are.
   // The one thing a real filesystem cannot be asked to do is lose a race on
   // demand, so this stands in for a path that was a regular file when it was
   // checked and is something else by the time it is used.
   pretendRegularFiles: new Set<string>(),
+  // Real path -> the swap to perform the instant `realpathSync` hands that path
+  // back. Same idea, one step later in the pipeline: it opens the window
+  // between the scan's containment decision and the read that trusts it.
+  swapOnRealpath: new Map<string, () => void>(),
 }));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
 
-  function record<Fn extends (...args: any[]) => any>(mode: FsCallMode, fn: Fn): Fn {
+  function record<Fn extends (...args: any[]) => any>(name: string, mode: FsCallMode, fn: Fn): Fn {
     return ((...args: Parameters<Fn>) => {
-      if (typeof args[0] === "string") fsAudit.calls.push({ mode, target: args[0] });
+      if (typeof args[0] === "string") fsAudit.calls.push({ fn: name, mode, target: args[0] });
 
       return fn(...args);
     }) as Fn;
@@ -46,13 +60,31 @@ vi.mock("node:fs", async (importOriginal) => {
     return { ...(stats as object), isFile: () => true, isSymbolicLink: () => false };
   }) as typeof actual.lstatSync;
 
+  const racyRealpathSync = ((target: unknown, ...rest: unknown[]) => {
+    const resolved = (actual.realpathSync as (...args: unknown[]) => unknown)(target, ...rest);
+
+    if (typeof resolved === "string") {
+      const swap = fsAudit.swapOnRealpath.get(resolved);
+
+      // One-shot: the containment check has just passed on this path, and
+      // whatever the caller does with it next is racing the swap.
+      if (swap) {
+        fsAudit.swapOnRealpath.delete(resolved);
+        swap();
+      }
+    }
+
+    return resolved;
+  }) as unknown as typeof actual.realpathSync;
+
   const mocked = {
     ...actual,
-    lstatSync: record("parent", racyLstatSync),
-    openSync: record("resolve", actual.openSync),
-    readdirSync: record("resolve", actual.readdirSync),
-    readFileSync: record("resolve", actual.readFileSync),
-    statSync: record("resolve", actual.statSync),
+    lstatSync: record("lstatSync", "parent", racyLstatSync),
+    openSync: record("openSync", "resolve", actual.openSync),
+    readdirSync: record("readdirSync", "resolve", actual.readdirSync),
+    readFileSync: record("readFileSync", "resolve", actual.readFileSync),
+    realpathSync: Object.assign(racyRealpathSync, { native: actual.realpathSync.native }),
+    statSync: record("statSync", "resolve", actual.statSync),
   };
 
   return { ...mocked, default: mocked };
@@ -130,9 +162,14 @@ function expectNoAccessOutside(workdir: string): void {
   expect(escapes).toEqual([]);
 }
 
+function callsTo(name: string): { fn: string; mode: FsCallMode; target: string }[] {
+  return fsAudit.calls.filter(({ fn }) => fn === name);
+}
+
 afterEach(() => {
   fsAudit.calls.length = 0;
   fsAudit.pretendRegularFiles.clear();
+  fsAudit.swapOnRealpath.clear();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -211,6 +248,16 @@ describe("listProviderArtifacts", () => {
     expect(groupFor(result, "skill").artifacts[0].name).toBe("no-frontmatter");
     expect(groupFor(result, "skill").artifacts[0].description).toBeUndefined();
     expect(groupFor(result, "agent").artifacts[0].name).toBe("unnamed");
+  });
+
+  // Stripping ".md" off a file named exactly ".md" leaves nothing to render, so
+  // the row would appear with no label at all.
+  it("keeps the entry name when stripping the suffix would leave it empty", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    mkdirSync(path.join(workdir, ".claude/agents"), { recursive: true });
+    writeFileSync(path.join(workdir, ".claude/agents/.md"), "# no frontmatter\n", "utf8");
+
+    expect(groupFor(listProviderArtifacts(userData, "cluster-1", "claude"), "agent").artifacts[0].name).toBe(".md");
   });
 
   it("takes mtime from the artifact file and orders artifacts oldest-first", () => {
@@ -314,6 +361,64 @@ describe("listProviderArtifacts", () => {
     expectNoAccessOutside(workdir);
   });
 
+  // A hardlink has no separate real path, so realpathSync — which resolves
+  // symlinks — reports the in-workspace path and every containment check passes
+  // while the bytes belong to a file outside the workspace entirely.
+  it("skips an artifact file with more than one hard link", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    const outside = createUserData();
+    const secret = path.join(outside, "secret.md");
+    writeFileSync(secret, "---\nname: hardlinked-secret\ndescription: outside the workspace\n---\n", "utf8");
+
+    mkdirSync(path.join(workdir, ".claude/skills/pwned"), { recursive: true });
+    mkdirSync(path.join(workdir, ".claude/agents"), { recursive: true });
+    linkSync(secret, path.join(workdir, ".claude/skills/pwned/SKILL.md"));
+    linkSync(secret, path.join(workdir, ".claude/agents/pwned.md"));
+
+    const result = listProviderArtifacts(userData, "cluster-1", "claude");
+
+    expect(groupFor(result, "skill").count).toBe(0);
+    expect(groupFor(result, "agent").count).toBe(0);
+    expect(JSON.stringify(result)).not.toContain("hardlinked-secret");
+  });
+
+  it("skips a hard-linked artifact even when its other link is inside the workdir", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    const real = writeSkill(workdir, ".claude/skills", "real");
+    mkdirSync(path.join(workdir, ".claude/skills/twin"), { recursive: true });
+    // Nothing distinguishes this from the escaping case above: a second link is
+    // invisible from the path side, so link count is the only signal there is.
+    // Excluding cross-workspace hardlinks too is the price, and no symlink check
+    // could have caught either.
+    linkSync(real, path.join(workdir, ".claude/skills/twin/SKILL.md"));
+
+    expect(groupFor(listProviderArtifacts(userData, "cluster-1", "claude"), "skill").count).toBe(0);
+  });
+
+  // The scan resolved and containment-checked this path; readFrontmatter then
+  // opens it again, which is an independent third resolution. Only an open that
+  // refuses to follow a symlink and re-identifies the descriptor closes that
+  // window.
+  it("does not read a file swapped for a symlink after its path was resolved", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    const outside = createUserData();
+    writeFileSync(path.join(outside, "secret.md"), "---\nname: outside-secret\n---\n", "utf8");
+    const artifact = realpathSync(writeSkill(workdir, ".claude/skills", "raced"));
+
+    fsAudit.swapOnRealpath.set(artifact, () => {
+      rmSync(artifact);
+      symlinkSync(path.join(outside, "secret.md"), artifact, "file");
+    });
+
+    const group = groupFor(scanWithAudit(userData, "cluster-1", "claude"), "skill");
+
+    // The entry is still counted — it was a real file when it was checked — but
+    // its metadata now comes from the directory name, never from the file the
+    // attacker substituted.
+    expect(group.artifacts.map(({ name }) => name)).toEqual(["raced"]);
+    expect(JSON.stringify(group)).not.toContain("outside-secret");
+  });
+
   it("skips a declared root that is itself a symlink escaping the workdir", () => {
     const { userData, workdir } = createWorkspace("claude");
     const outside = createUserData();
@@ -366,6 +471,60 @@ describe("listProviderArtifacts", () => {
     expect(groupFor(listProviderArtifacts(userData, "cluster-1", "claude"), "skill").truncated).toBe(false);
   });
 
+  // The cap bounds the RESULT; this bounds the WORK. Dedup drops and entries
+  // that hold no artifact file never reach the cap, so without a second budget a
+  // workspace can make this synchronous main-process handler lstat, realpath and
+  // head-read every one of hundreds of thousands of entries.
+  it("bounds the entries it examines, not just the artifacts it keeps", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    const total = MAX_ENTRIES_SCANNED + 100;
+
+    for (let index = 0; index < total; index++) {
+      writeSkill(workdir, ".claude/skills", `dup-${String(index).padStart(5, "0")}`, "name: same-name");
+    }
+
+    const group = groupFor(scanWithAudit(userData, "cluster-1", "claude"), "skill");
+
+    // One artifact kept out of 2100 directories: the per-kind cap never fires,
+    // which is exactly why it cannot be the thing that bounds the scan.
+    expect(group.count).toBe(1);
+    // Syscalls, not wall-clock time: the cost is what the handler did, and a
+    // timing assertion would be a flake on a busy CI machine.
+    expect(callsTo("openSync").length).toBeLessThanOrEqual(MAX_ENTRIES_SCANNED);
+    expect(callsTo("lstatSync").length).toBeLessThanOrEqual(MAX_ENTRIES_SCANNED);
+    expect(group.truncated).toBe(true);
+  });
+
+  // Truncation drops artifacts in NAME order while the group is displayed in
+  // MTIME order, so the kept set's range says nothing about the workspace. Here
+  // the five newest skills sort last by name and are exactly the ones dropped.
+  it("reports the true mtime range and examined count for a truncated kind", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    const total = MAX_ARTIFACTS_PER_KIND + 5;
+
+    for (let index = 0; index < total; index++) {
+      const file = writeSkill(workdir, ".claude/skills", `skill-${String(index).padStart(3, "0")}`);
+
+      setMtime(file, index < MAX_ARTIFACTS_PER_KIND ? 1_000 : 2_000_000_000);
+    }
+
+    const group = groupFor(listProviderArtifacts(userData, "cluster-1", "claude"), "skill");
+
+    expect(group.count).toBe(MAX_ARTIFACTS_PER_KIND);
+    expect(group.truncated).toBe(true);
+    expect(group.examinedCount).toBe(total);
+    expect(group.newestMtimeMs).toBe(2_000_000_000_000);
+    expect(group.oldestMtimeMs).toBe(1_000_000);
+  });
+
+  it("reports the examined count as the artifact count for an untruncated kind", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    writeSkill(workdir, ".claude/skills", "one");
+    writeSkill(workdir, ".claude/skills", "two");
+
+    expect(groupFor(listProviderArtifacts(userData, "cluster-1", "claude"), "skill").examinedCount).toBe(2);
+  });
+
   it("does not let a deduped name consume cap budget or fake truncation", () => {
     const { userData, workdir } = createWorkspace("opencode");
     for (let index = 0; index < 200; index++) {
@@ -381,16 +540,33 @@ describe("listProviderArtifacts", () => {
     expect(group.truncated).toBe(false);
   });
 
+  // The canary is shaped `description: <secret>` and sits in a document with no
+  // closing delimiter, because that is the only shape a `key: value` reader can
+  // actually capture. A canary without a colon in it would make this test pass
+  // by construction, whatever the reader did.
   it("never returns file bodies", () => {
     const { userData, workdir } = createWorkspace("claude");
-    writeSkill(workdir, ".claude/skills", "secretive", "name: secretive\ndescription: safe");
+    mkdirSync(path.join(workdir, ".claude/skills/secretive"), { recursive: true });
     writeFileSync(
       path.join(workdir, ".claude/skills/secretive/SKILL.md"),
-      "---\nname: secretive\ndescription: safe\n---\nSUPER-SECRET-BODY\n",
+      "---\n# Deployment notes\n\nSome prose here.\ndescription: SUPER-SECRET-BODY\n\nmore prose\n",
+      "utf8",
+    );
+    // Same canary in the other layout, and in a file whose real frontmatter
+    // closed long before the body line.
+    writeAgent(workdir, ".claude/agents", "closed", "name: closed\ndescription: safe");
+    writeFileSync(
+      path.join(workdir, ".claude/agents/closed.md"),
+      "---\nname: closed\ndescription: safe\n---\ndescription: SUPER-SECRET-BODY\n",
       "utf8",
     );
 
-    expect(JSON.stringify(listProviderArtifacts(userData, "cluster-1", "claude"))).not.toContain("SUPER-SECRET-BODY");
+    const result = listProviderArtifacts(userData, "cluster-1", "claude");
+
+    expect(groupFor(result, "skill").artifacts[0].name).toBe("secretive");
+    expect(groupFor(result, "skill").artifacts[0].description).toBeUndefined();
+    expect(groupFor(result, "agent").artifacts[0].description).toBe("safe");
+    expect(JSON.stringify(result)).not.toContain("SUPER-SECRET-BODY");
   });
 
   it("returns an error result when the workspace fails its containment check", () => {

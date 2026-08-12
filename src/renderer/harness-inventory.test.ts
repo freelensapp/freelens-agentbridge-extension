@@ -6,8 +6,10 @@ import {
   iconForArtifactKind,
   labelForArtifactKind,
   loadHarnessInventory,
+  opensCoalesceWindow,
   shouldRefresh,
   summarizeInventory,
+  totalLabel,
 } from "./harness-inventory";
 
 import type { HarnessArtifact } from "../common/harness-artifacts";
@@ -154,16 +156,70 @@ describe("summarizeInventory", () => {
   });
 });
 
+describe("totalLabel", () => {
+  it("sums the kinds and keeps an untruncated total exact", () => {
+    expect(totalLabel([buildArtifactGroup("skill", [artifact("a", NOW), artifact("b", NOW)])])).toBe("2");
+    expect(
+      totalLabel([
+        buildArtifactGroup("skill", [artifact("a", NOW), artifact("b", NOW)]),
+        buildArtifactGroup("agent", [artifact("r", NOW, "agent")]),
+      ]),
+    ).toBe("3");
+    expect(totalLabel([])).toBe("0");
+  });
+
+  it("marks the total as a floor when any kind is truncated, matching the chips", () => {
+    // The chip for that kind already reads "200+"; a bare total next to it would
+    // claim a precision the scan never had.
+    expect(totalLabel([buildArtifactGroup("skill", [artifact("a", NOW)], true)])).toBe("1+");
+    expect(
+      totalLabel([
+        buildArtifactGroup("skill", [artifact("a", NOW)], true),
+        buildArtifactGroup("agent", [artifact("r", NOW, "agent")]),
+      ]),
+    ).toBe("2+");
+  });
+});
+
 describe("shouldRefresh", () => {
+  const request = { lastScanAtMs: undefined, nowMs: NOW, scanInFlight: false, force: false };
+
   it("always allows the first scan", () => {
-    expect(shouldRefresh(undefined, NOW)).toBe(true);
+    expect(shouldRefresh(request)).toBe(true);
   });
 
   it("coalesces refreshes requested within two seconds of the last scan", () => {
-    expect(shouldRefresh(NOW - 500, NOW)).toBe(false);
-    expect(shouldRefresh(NOW - 1_999, NOW)).toBe(false);
-    expect(shouldRefresh(NOW - 2_000, NOW)).toBe(true);
-    expect(shouldRefresh(NOW - 10_000, NOW)).toBe(true);
+    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 500 })).toBe(false);
+    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 1_999 })).toBe(false);
+    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 2_000 })).toBe(true);
+    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 10_000 })).toBe(true);
+  });
+
+  it("suppresses a scan while one is already in flight", () => {
+    // Restoring the window fires `focus` and `visibilitychange` in the same tick,
+    // and `lastScanAt` is only written on completion, so the coalescing window
+    // cannot catch the second one: both would run the main-process scan in full.
+    expect(shouldRefresh({ ...request, scanInFlight: true })).toBe(false);
+    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 10_000, scanInFlight: true })).toBe(false);
+  });
+
+  it("lets an explicit refresh through both gates", () => {
+    expect(shouldRefresh({ ...request, force: true, scanInFlight: true })).toBe(true);
+    expect(shouldRefresh({ ...request, force: true, lastScanAtMs: NOW - 500 })).toBe(true);
+    expect(shouldRefresh({ ...request, force: true, lastScanAtMs: NOW - 500, scanInFlight: true })).toBe(true);
+  });
+});
+
+describe("opensCoalesceWindow", () => {
+  it("opens the window only for a successful scan", () => {
+    expect(opensCoalesceWindow({ status: "ok", groups: [] })).toBe(true);
+  });
+
+  it("keeps a failed or discarded scan retryable", () => {
+    // An error result is truthy, so a naive `if (result)` starts the window and
+    // swallows the automatic retries for the next two seconds.
+    expect(opensCoalesceWindow({ status: "error", error: "Forbidden path" })).toBe(false);
+    expect(opensCoalesceWindow(undefined)).toBe(false);
   });
 });
 

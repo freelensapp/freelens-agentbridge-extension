@@ -293,6 +293,21 @@ describe("HarnessArtifactsSection", () => {
     expect(text).toContain("3");
   });
 
+  it("marks the header total as a floor when any kind is truncated", () => {
+    // The header chip already says "2+ skills"; a bare "3" next to it would read
+    // as an exact total the scan never established.
+    const result = {
+      status: "ok" as const,
+      groups: [
+        buildArtifactGroup("skill", [artifact({ name: "a" }), artifact({ name: "b", path: "b" })], true),
+        buildArtifactGroup("agent", [artifact({ name: "r", path: "r", kind: "agent" })]),
+      ],
+    };
+    const text = renderedText(HarnessArtifactsSection({ ...props, result, expanded: false }));
+
+    expect(text).toContain("3+");
+  });
+
   it("renders the error state with a retry control and no empty state", () => {
     const text = renderedText(
       HarnessArtifactsSection({ ...props, result: { status: "error", error: "Forbidden path" } }),
@@ -358,12 +373,53 @@ describe("HarnessArtifactsSection", () => {
     expect(text).not.toContain("~/.claude");
   });
 
-  it("hides the error body when collapsed", () => {
+  // The section is collapsed by default and force-collapsed on every
+  // cluster/provider change, so the collapsed rendering IS the default rendering
+  // of a failed scan. Hiding the failure there leaves "Workspace artifacts 0",
+  // which reads as an authoritative empty workspace.
+  it("keeps the error and Retry visible when collapsed", () => {
     const text = renderedText(
       HarnessArtifactsSection({ ...props, expanded: false, result: { status: "error", error: "Forbidden path" } }),
     );
 
-    expect(text).not.toContain("Forbidden path");
-    expect(text).not.toContain("Retry");
+    expect(text).toContain("Forbidden path");
+    expect(text).toContain("Retry");
+  });
+
+  it("rescans from the collapsed error Retry", () => {
+    const onRefresh = vi.fn();
+    const element = HarnessArtifactsSection({
+      ...props,
+      expanded: false,
+      onRefresh,
+      result: { status: "error", error: "Forbidden path" },
+    });
+
+    click(findButton(element, (button) => button.children === "Retry"));
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no count in the header when the scan failed", () => {
+    // A failed scan knows nothing about the workspace, so any number here is a
+    // fabrication — and "0" is the most damaging one.
+    const element = HarnessArtifactsSection({
+      ...props,
+      expanded: false,
+      result: { status: "error" as const, error: "Forbidden path" },
+    });
+
+    expect(renderedText(element)).not.toMatch(/\d/);
+    expect(
+      renderedText(HarnessArtifactsSection({ ...props, result: { status: "error", error: "Forbidden path" } })),
+    ).not.toContain("0");
+  });
+
+  it("still hides the descriptive body when a failed scan is collapsed", () => {
+    const text = renderedText(
+      HarnessArtifactsSection({ ...props, expanded: false, result: { status: "error", error: "Forbidden path" } }),
+    );
+
+    expect(text).not.toContain("~/.claude");
   });
 });

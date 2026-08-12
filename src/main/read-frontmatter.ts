@@ -1,13 +1,14 @@
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 
 // Bytes read from the head of an artifact file. Frontmatter blocks written by
 // every provider are far smaller than this; the cap exists so a hostile or
 // merely huge file cannot be pulled into memory by a directory listing.
 const HEAD_BYTES = 4096;
 
-// Descriptions are rendered in a single truncated UI line; anything longer is
-// payload we would only throw away in the renderer.
-const MAX_DESCRIPTION_LENGTH = 200;
+// Both fields cross IPC and are rendered in a single line — the description
+// truncated, the name in a <strong>. Anything longer is payload the renderer
+// would only throw away, so it never leaves this module.
+const MAX_FIELD_LENGTH = 200;
 
 // Top-level, unindented key only: an indented `name:` belongs to some nested
 // mapping this reader does not model, so it must not be mistaken for the
@@ -23,6 +24,14 @@ const QUOTED_PATTERN = /^"([^"]*)"$|^'([^']*)'$/;
 export interface Frontmatter {
   name?: string;
   description?: string;
+}
+
+// The file the caller already lstat-ed and containment-checked. `fs.Stats`
+// satisfies this structurally, so a scanner hands over the very stats it made
+// its decision on and nothing has to be re-derived from the path.
+export interface FileIdentity {
+  readonly dev: number;
+  readonly ino: number;
 }
 
 function unquote(value: string): string {
@@ -46,11 +55,24 @@ export function parseFrontmatter(head: string): Frontmatter {
 
   const body = lines.slice(1);
   const closingIndex = body.findIndex((line) => line.trim() === "---");
-  // With no closing delimiter inside the head window the last line may have been
-  // cut mid-value (or mid-UTF-8-sequence), so it is dropped rather than trusted.
-  // A head that ends on a newline has "" as its last element, so a complete
-  // final line survives.
-  const fields = closingIndex === -1 ? body.slice(0, -1) : body.slice(0, closingIndex);
+
+  // An unterminated block is not frontmatter. One rule, two reasons:
+  //
+  //   - A plain markdown document may simply OPEN with a `---` thematic break.
+  //     Scanning its whole head for `key: value` lifted body lines — including a
+  //     line as unfortunate as `description: prod db password is ...` — into the
+  //     inventory and across IPC, breaking this feature's "no file body ever
+  //     crosses the boundary" guarantee.
+  //   - A block whose closing delimiter sits past the head window may have had
+  //     its last line cut mid-value or mid-UTF-8-sequence.
+  //
+  // Both are "we cannot tell what this file is", and this reader's whole
+  // philosophy is to yield no value rather than a wrong one. A block that does
+  // close inside the window is complete by construction, so no line inside it
+  // can have been truncated and no tail has to be dropped.
+  if (closingIndex === -1) return {};
+
+  const fields = body.slice(0, closingIndex);
   const frontmatter: Frontmatter = {};
 
   for (const line of fields) {
@@ -60,23 +82,48 @@ export function parseFrontmatter(head: string): Frontmatter {
     const value = unquote(match[2].trim());
 
     if (!value) continue;
-    if (match[1] === "name" && frontmatter.name === undefined) frontmatter.name = value;
+    if (match[1] === "name" && frontmatter.name === undefined) frontmatter.name = value.slice(0, MAX_FIELD_LENGTH);
     if (match[1] === "description" && frontmatter.description === undefined) {
-      frontmatter.description = value.slice(0, MAX_DESCRIPTION_LENGTH);
+      frontmatter.description = value.slice(0, MAX_FIELD_LENGTH);
     }
   }
 
   return frontmatter;
 }
 
+// Opening by path is an INDEPENDENT resolution of a path the caller already
+// resolved and containment-checked, so the open itself has to be safe:
+//
+//   - O_NOFOLLOW fails the open outright if the final segment became a symlink
+//     between the caller's check and this call, which is the only way that race
+//     could otherwise read a file outside the workspace.
+//   - O_NONBLOCK keeps a FIFO left at that path from parking this call forever.
+//     This runs synchronously on the Electron main process, and `openSync` has
+//     no timeout, so "forever" means until the app is killed.
+//
+// Windows defines neither flag, so each is optional; there `fstatSync` below is
+// the whole guard.
+const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
 // Never throws: an unreadable artifact is still counted, just without metadata.
-export function readFrontmatter(filePath: string): Frontmatter {
+//
+// `expected` is the identity of the file the caller decided to read — see
+// FileIdentity. Passing it is not optional: without it this function's open is a
+// third, unverified resolution of a path someone else vouched for.
+export function readFrontmatter(filePath: string, expected: FileIdentity): Frontmatter {
   let head: string;
 
   try {
-    const descriptor = openSync(filePath, "r");
+    const descriptor = openSync(filePath, OPEN_FLAGS);
 
     try {
+      // Trust the DESCRIPTOR, not the path. `isFile()` alone would still accept
+      // a different regular file swapped in after the caller's check, so the
+      // (dev, ino) pair has to match too.
+      const stats = fstatSync(descriptor);
+
+      if (!stats.isFile() || stats.dev !== expected.dev || stats.ino !== expected.ino) return {};
+
       const buffer = Buffer.alloc(HEAD_BYTES);
       const bytes = readSync(descriptor, buffer, 0, HEAD_BYTES, 0);
       head = buffer.subarray(0, bytes).toString("utf8");
