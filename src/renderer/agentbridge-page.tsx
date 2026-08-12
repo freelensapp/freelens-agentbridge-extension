@@ -3,7 +3,7 @@ import { ipcRenderer } from "electron";
 import { observer } from "mobx-react";
 import { useEffect, useRef, useState } from "react";
 import { agentBridgeProviders, getAgentBridgeProvider } from "../common/agentbridge-providers";
-import { CLUSTER_MAP_DESCRIPTION, getClusterMapInvocation } from "./cluster-map-hint";
+import { CapabilitiesSection } from "./capabilities-section";
 import { launchProviderSession } from "./launch-session";
 import { ProviderFileEditor } from "./provider-file-editor";
 import { loadProvider, loadSelectedProvider, saveSelectedProvider } from "./provider-selection";
@@ -18,46 +18,6 @@ type PageState = { status: "idle" | "loading" } | ProviderLoadResult;
 
 interface AgentBridgePageProps {
   extension: Renderer.LensExtension;
-}
-
-// Static explainer that tells the user the bundled cluster-map command exists,
-// what it produces, and exactly how to invoke it for the selected provider. The
-// extension does not run it — the user types it inside a session.
-function ClusterMapHint({ providerId }: { providerId: string }) {
-  const invocation = getClusterMapInvocation(providerId);
-
-  return (
-    <div
-      style={{
-        border: "1px solid var(--borderFaintColor, rgba(127,127,127,0.25))",
-        borderRadius: "6px",
-        padding: "12px 14px",
-        display: "flex",
-        gap: "10px",
-        alignItems: "flex-start",
-      }}
-    >
-      <Renderer.Component.Icon material="map" small style={{ marginTop: "2px", opacity: 0.8 }} />
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
-        <strong>Build a cluster map</strong>
-        <span style={{ opacity: 0.85 }}>{CLUSTER_MAP_DESCRIPTION}</span>
-        <span>
-          {invocation.verb} inside a session:{" "}
-          <code
-            style={{
-              padding: "1px 6px",
-              borderRadius: "4px",
-              background: "var(--halfGray, rgba(127,127,127,0.15))",
-              fontFamily: "var(--font-monospace, monospace)",
-            }}
-          >
-            {invocation.command}
-          </code>
-          . The command is also editable below.
-        </span>
-      </div>
-    </div>
-  );
 }
 
 export const AgentBridgePage = observer(function AgentBridgePage({ extension: _extension }: AgentBridgePageProps) {
@@ -184,103 +144,127 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
       <div
         style={{
           padding: "var(--padding, 16px)",
-          maxWidth: "900px",
+          maxWidth: "1200px",
           margin: "0 auto",
           width: "100%",
           boxSizing: "border-box",
           display: "flex",
-          flexDirection: "column",
-          gap: "16px",
+          flexWrap: "wrap",
+          gap: "24px",
+          alignItems: "flex-start",
         }}
       >
-        <Renderer.Component.SubTitle title={provider ? `${provider.name} Session` : "Freelens Agent Bridge"}>
-          {hasCurrentSelection && state.status === "ready" && (
-            <>
-              <Renderer.Component.StatusBrick className="running" /> {provider?.name} v{state.version}
-            </>
-          )}
-          {hasCurrentSelection && state.status === "loading" && (
-            <>
-              <Renderer.Component.StatusBrick className="waiting" /> Checking {provider?.name}...
-            </>
-          )}
-          {hasCurrentSelection && (state.status === "missing" || state.status === "error") && (
-            <Renderer.Component.StatusBrick className="failed" />
-          )}
-        </Renderer.Component.SubTitle>
+        <div
+          style={{
+            flex: "1 1 560px",
+            minWidth: "min(100%, 560px)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+          }}
+        >
+          <Renderer.Component.SubTitle title={provider ? `${provider.name} Session` : "Freelens Agent Bridge"}>
+            {hasCurrentSelection && state.status === "ready" && (
+              <>
+                <Renderer.Component.StatusBrick className="running" /> {provider?.name} v{state.version}
+              </>
+            )}
+            {hasCurrentSelection && state.status === "loading" && (
+              <>
+                <Renderer.Component.StatusBrick className="waiting" /> Checking {provider?.name}...
+              </>
+            )}
+            {hasCurrentSelection && (state.status === "missing" || state.status === "error") && (
+              <Renderer.Component.StatusBrick className="failed" />
+            )}
+          </Renderer.Component.SubTitle>
 
-        <p style={{ margin: 0 }}>Select an AI CLI for this cluster. Provider workspaces are isolated per cluster.</p>
-        <div style={{ maxWidth: "420px", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-          <Renderer.Component.Select
-            id="agentbridge-provider-select"
-            themeName="lens"
-            placeholder="Select an AI CLI provider..."
-            isDisabled={!clusterId}
-            options={providerOptions}
-            value={providerId ?? null}
-            onChange={(option: { value: AgentBridgeProviderId } | null) => option && selectProvider(option.value)}
-          />
-          <p style={{ margin: 0, fontSize: "0.85em", opacity: 0.7 }}>
-            CLI permissions are convenience guardrails. Kubernetes RBAC and kubeconfig permissions remain the security
-            boundary.
-          </p>
-        </div>
-
-        {!clusterId && <p style={{ margin: 0 }}>No active cluster. Open a cluster first.</p>}
-        {hasCurrentSelection && state.status === "missing" && provider && (
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <Renderer.Component.Icon material="error_outline" />
-            <span>{provider.name} not found on PATH</span>
-            <Renderer.Component.Button plain href={provider.docsUrl} target="_blank">
-              {provider.name} docs
-            </Renderer.Component.Button>
-            {state.error && <span>{state.error}</span>}
-            <Renderer.Component.Button outlined label="Retry" onClick={retryProvider} />
+          <p style={{ margin: 0 }}>Select an AI CLI for this cluster. Provider workspaces are isolated per cluster.</p>
+          <div style={{ maxWidth: "420px", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+            <Renderer.Component.Select
+              id="agentbridge-provider-select"
+              themeName="lens"
+              placeholder="Select an AI CLI provider..."
+              isDisabled={!clusterId}
+              options={providerOptions}
+              value={providerId ?? null}
+              onChange={(option: { value: AgentBridgeProviderId } | null) => option && selectProvider(option.value)}
+            />
+            <p style={{ margin: 0, fontSize: "0.85em", opacity: 0.7 }}>
+              CLI permissions are convenience guardrails. Kubernetes RBAC and kubeconfig permissions remain the security
+              boundary.
+            </p>
           </div>
-        )}
-        {hasCurrentSelection && state.status === "error" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+
+          {!clusterId && <p style={{ margin: 0 }}>No active cluster. Open a cluster first.</p>}
+          {hasCurrentSelection && state.status === "missing" && provider && (
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
               <Renderer.Component.Icon material="error_outline" />
-              <span>{provider ? `${provider.name}: ${state.error}` : state.error}</span>
+              <span>{provider.name} not found on PATH</span>
+              <Renderer.Component.Button plain href={provider.docsUrl} target="_blank">
+                {provider.name} docs
+              </Renderer.Component.Button>
+              {state.error && <span>{state.error}</span>}
               <Renderer.Component.Button outlined label="Retry" onClick={retryProvider} />
             </div>
-            {state.error.includes("timed out") && (
-              <p style={{ margin: 0 }}>
-                You can increase the version probe timeout under Preferences, in the Extensions tab.
-              </p>
-            )}
-          </div>
-        )}
-        {hasCurrentSelection && state.status === "ready" && provider && clusterId && (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Renderer.Component.Button
-                  primary
-                  label={`Open ${provider.name} session`}
-                  onClick={launch}
-                  disabled={launching}
-                  waiting={launching}
-                />
+          )}
+          {hasCurrentSelection && state.status === "error" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <Renderer.Component.Icon material="error_outline" />
+                <span>{provider ? `${provider.name}: ${state.error}` : state.error}</span>
+                <Renderer.Component.Button outlined label="Retry" onClick={retryProvider} />
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
-                <Renderer.Component.Button outlined label="Reveal workdir" onClick={() => void reveal()} />
-                <Renderer.Component.Button outlined onClick={() => void openInEditor()}>
-                  <Renderer.Component.Icon material="code" small />
-                  Open in editor
-                </Renderer.Component.Button>
-                <Renderer.Component.Button outlined onClick={() => void reset()}>
-                  <Renderer.Component.Icon material="restart_alt" small />
-                  Reset
-                </Renderer.Component.Button>
-              </div>
+              {state.error.includes("timed out") && (
+                <p style={{ margin: 0 }}>
+                  You can increase the version probe timeout under Preferences, in the Extensions tab.
+                </p>
+              )}
             </div>
-            <ClusterMapHint providerId={provider.id} />
-            {provider.editors.map((editor) => (
-              <ProviderFileEditor key={editor.path} clusterId={clusterId} providerId={provider.id} editor={editor} />
-            ))}
-          </>
+          )}
+          {hasCurrentSelection && state.status === "ready" && provider && clusterId && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Renderer.Component.Button
+                    primary
+                    label={`Open ${provider.name} session`}
+                    onClick={launch}
+                    disabled={launching}
+                    waiting={launching}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+                  <Renderer.Component.Button outlined label="Reveal workdir" onClick={() => void reveal()} />
+                  <Renderer.Component.Button outlined onClick={() => void openInEditor()}>
+                    <Renderer.Component.Icon material="code" small />
+                    Open in editor
+                  </Renderer.Component.Button>
+                  <Renderer.Component.Button outlined onClick={() => void reset()}>
+                    <Renderer.Component.Icon material="restart_alt" small />
+                    Reset
+                  </Renderer.Component.Button>
+                </div>
+              </div>
+              {provider.editors.map((editor) => (
+                <ProviderFileEditor key={editor.path} clusterId={clusterId} providerId={provider.id} editor={editor} />
+              ))}
+            </>
+          )}
+        </div>
+
+        {hasCurrentSelection && state.status === "ready" && provider && clusterId && (
+          <aside
+            style={{
+              flex: "1 1 300px",
+              minWidth: "280px",
+              maxWidth: "360px",
+              position: "sticky",
+              top: 0,
+            }}
+          >
+            <CapabilitiesSection providerId={provider.id} />
+          </aside>
         )}
       </div>
     </div>
