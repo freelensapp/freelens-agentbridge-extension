@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   checkProvider: vi.fn(),
   getPath: vi.fn(() => "/user-data"),
   handle: vi.fn(),
+  listProviderArtifacts: vi.fn(),
   openExternal: vi.fn(),
   openPath: vi.fn(),
   openWorkspaceInEditor: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("electron", () => ({
 }));
 
 vi.mock("./check-provider", () => ({ checkProvider: mocks.checkProvider }));
+vi.mock("./harness-artifacts", () => ({ listProviderArtifacts: mocks.listProviderArtifacts }));
 vi.mock("./open-in-editor", () => ({ openWorkspaceInEditor: mocks.openWorkspaceInEditor }));
 vi.mock("./extension-settings-store", () => ({
   readExtensionSettings: mocks.readExtensionSettings,
@@ -73,6 +75,7 @@ describe("AgentBridgeMainExtension", () => {
       "agentbridge-extension:reset-provider",
       "agentbridge-extension:get-settings",
       "agentbridge-extension:set-settings",
+      "agentbridge-extension:list-provider-artifacts",
     ];
     expect(mocks.removeHandler.mock.calls.map(([channel]) => channel)).toEqual([...channels, ...channels]);
     expect(mocks.handle.mock.calls.map(([channel]) => channel)).toEqual([...channels, ...channels]);
@@ -86,6 +89,7 @@ describe("AgentBridgeMainExtension", () => {
     await getHandler("agentbridge-extension:reset-provider")({}, "cluster-1", "claude");
     await getHandler("agentbridge-extension:get-settings")({});
     await getHandler("agentbridge-extension:set-settings")({}, { probeTimeoutMs: 30_000 });
+    await getHandler("agentbridge-extension:list-provider-artifacts")({}, "cluster-1", "claude");
 
     expect(mocks.checkProvider).toHaveBeenCalledWith("claude", undefined, 15_000);
     expect(mocks.readExtensionSettings).toHaveBeenCalledWith("/user-data");
@@ -100,6 +104,7 @@ describe("AgentBridgeMainExtension", () => {
       openExternal: mocks.openExternal,
     });
     expect(mocks.resetProvider).toHaveBeenCalledWith("/user-data", "cluster-1", "claude");
+    expect(mocks.listProviderArtifacts).toHaveBeenCalledWith("/user-data", "cluster-1", "claude");
   });
 
   it("returns reset errors to renderer", async () => {

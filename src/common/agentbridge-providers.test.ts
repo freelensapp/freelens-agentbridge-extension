@@ -42,6 +42,10 @@ describe("agentBridgeProviders", () => {
           },
         ],
         resetPaths: [".opencode/opencode.json", ".opencode/command/build-cluster-map.md"],
+        artifactSources: [
+          { kind: "skill", roots: [".opencode/skills", ".claude/skills", ".agents/skills"], layout: "skill-dir" },
+          { kind: "agent", roots: [".opencode/agent", ".opencode/agents"], layout: "markdown" },
+        ],
       },
       {
         id: "claude",
@@ -72,6 +76,10 @@ describe("agentBridgeProviders", () => {
           },
         ],
         resetPaths: [".claude/settings.json", ".claude/commands/build-cluster-map.md"],
+        artifactSources: [
+          { kind: "skill", roots: [".claude/skills"], layout: "skill-dir" },
+          { kind: "agent", roots: [".claude/agents"], layout: "markdown" },
+        ],
       },
       {
         id: "copilot",
@@ -101,6 +109,10 @@ describe("agentBridgeProviders", () => {
           },
         ],
         resetPaths: [".github/copilot/settings.json", ".github/skills/build-cluster-map/SKILL.md"],
+        artifactSources: [
+          { kind: "skill", roots: [".github/skills"], layout: "skill-dir" },
+          { kind: "agent", roots: [".github/agents"], layout: "markdown" },
+        ],
       },
     ]);
   });
@@ -117,6 +129,51 @@ describe("agentBridgeProviders", () => {
 
       for (const path of provider.resetPaths) {
         expect(editorPaths).toContain(path);
+      }
+    }
+  });
+
+  it("declares a skill and an agent artifact source for every provider", () => {
+    for (const provider of agentBridgeProviders) {
+      expect(provider.artifactSources.map(({ kind }) => kind)).toEqual(["skill", "agent"]);
+    }
+  });
+
+  it("uses safe relative artifact roots", () => {
+    for (const provider of agentBridgeProviders) {
+      for (const source of provider.artifactSources) {
+        expect(source.roots.length).toBeGreaterThan(0);
+        expect(new Set(source.roots)).toHaveLength(source.roots.length);
+        expect(["skill-dir", "markdown"]).toContain(source.layout);
+
+        for (const root of source.roots) {
+          expect(root).not.toContain("\0");
+          expect(root.split(/[\\/]/)).not.toContain("..");
+          expect(root).not.toMatch(/^(?:[\\/]|[A-Za-z]:)/);
+
+          // An empty or "." segment resolves back to the workdir itself, which
+          // would scan the whole workspace instead of one artifact directory.
+          for (const segment of root.split(/[\\/]/)) {
+            expect(segment).not.toBe("");
+            expect(segment).not.toBe(".");
+          }
+        }
+      }
+    }
+  });
+
+  it("never scans the same root under two kinds", () => {
+    for (const provider of agentBridgeProviders) {
+      const roots = provider.artifactSources.flatMap((source) => [...source.roots]);
+
+      expect(new Set(roots)).toHaveLength(roots.length);
+    }
+  });
+
+  it("uses the skill-dir layout for skills and the markdown layout for agents", () => {
+    for (const provider of agentBridgeProviders) {
+      for (const source of provider.artifactSources) {
+        expect(source.layout).toBe(source.kind === "skill" ? "skill-dir" : "markdown");
       }
     }
   });

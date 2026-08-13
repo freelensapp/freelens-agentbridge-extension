@@ -2,6 +2,7 @@ import { Main } from "@freelensapp/extensions";
 import { app, ipcMain, shell } from "electron";
 import { checkProvider } from "./check-provider";
 import { readExtensionSettings, writeExtensionSettings } from "./extension-settings-store";
+import { listProviderArtifacts } from "./harness-artifacts";
 import { openWorkspaceInEditor } from "./open-in-editor";
 import {
   prepareProviderWorkspace,
@@ -35,6 +36,7 @@ export default class AgentBridgeMainExtension extends Main.LensExtension {
       "reset-provider",
       "get-settings",
       "set-settings",
+      "list-provider-artifacts",
     ];
 
     for (const channel of channels) ipcMain.removeHandler(`${CHANNEL_PREFIX}${channel}`);
@@ -77,6 +79,11 @@ export default class AgentBridgeMainExtension extends Main.LensExtension {
     ipcMain.handle(`${CHANNEL_PREFIX}get-settings`, () => readExtensionSettings(app.getPath("userData")));
     ipcMain.handle(`${CHANNEL_PREFIX}set-settings`, (_event, settings: unknown) =>
       writeExtensionSettings(app.getPath("userData"), settings),
+    );
+    // Metadata only: the scan root is always the verified workdir for this
+    // cluster and provider, never a path the renderer supplies.
+    ipcMain.handle(`${CHANNEL_PREFIX}list-provider-artifacts`, (_event, clusterId: string, providerId: string) =>
+      listProviderArtifacts(app.getPath("userData"), clusterId, providerId),
     );
   }
 }

@@ -16,6 +16,8 @@
   - Creates isolated workspaces, seeds and resets managed files, validates declared paths, and exposes safe file I/O.
 - `src/main/get-provider-workdir.ts`
   - Maps cluster IDs to collision-resistant directory names under Freelens `userData`.
+- `src/main/harness-artifacts.ts`, `read-frontmatter.ts`
+  - Read-only inventory of workspace skills and custom agents; bounded frontmatter metadata extraction.
 - `src/main/check-provider.ts`, `open-in-editor.ts`, `extension-settings-store.ts`
   - Provider executable probes, external editor launch, and JSON settings persistence.
 - `src/main/scaffolds/`
@@ -30,6 +32,8 @@
   - Testable terminal launch logic, Freelens terminal adapter, and platform-specific shell commands.
 - `src/renderer/capability-hints.ts`, `capabilities-section.tsx`
   - Data-driven capability registry and generic capability UI.
+- `src/renderer/harness-inventory.ts`, `harness-artifacts-section.tsx`
+  - Inventory view logic and the workspace artifacts panel.
 - `src/**/*.test.{ts,tsx}`, `test/freelens-extensions.ts`
   - Vitest unit tests and Freelens host stub.
 - `electron.vite.config.js`, `build/`
@@ -45,6 +49,7 @@
 - When ready, renderer requests workspace preparation.
 - Main derives `<userData>/agentbridge-sessions/<safe-cluster-id>/<provider-id>/`, verifies real-path containment, and copies missing declared scaffold files.
 - Renderer reads and debounced-writes declared provider files through IPC; main rejects undeclared, absolute, traversal, and escaped paths.
+- Renderer requests the workspace artifact inventory through IPC; main lists registry-declared artifact roots under the verified workdir and returns metadata only, never file contents.
 - Session launch creates Freelens terminal tab, waits for terminal readiness, changes to provider workspace, then runs provider executable.
 - Freelens terminal infrastructure supplies active cluster `KUBECONFIG`; extension does not read or modify Kubernetes credentials.
 - Reveal and editor actions cross IPC; main verifies workspace then uses Electron shell or configured editor executable.
@@ -64,6 +69,8 @@
 - `ExtensionSettings`: normalized probe timeout and external editor command/URI scheme.
 - `LaunchSessionDeps`: small adapter boundary between framework-independent launch timing and Freelens terminal APIs.
 - `CapabilityHint`: data-only capability description whose provider-specific invocation controls applicability.
+- `ArtifactSource`: registry entry declaring, per artifact kind, the workspace-relative roots scanned for the inventory and their directory layout.
+- `HarnessArtifact` / `HarnessArtifactGroup`: normalized inventory record and its derived per-kind rollup (count, mtime range, truncation).
 - `agentbridge-extension:*`: explicit renderer/main IPC boundary for all privileged operations.
 
 ## External Dependencies

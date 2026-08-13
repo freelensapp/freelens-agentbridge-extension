@@ -46,6 +46,7 @@ describe("getLaunchCommand", () => {
       docsUrl: "https://example.com",
       launchArgs: ["--continue"],
       editors: [],
+      artifactSources: [],
       resetPaths: [],
     };
 

@@ -1,3 +1,5 @@
+import type { ArtifactSource } from "./harness-artifacts";
+
 export type EditorRole = "instructions" | "permissions" | "settings" | "command";
 
 export interface EditorDefinition {
@@ -20,6 +22,10 @@ export interface AgentBridgeProvider {
   readonly docsUrl: string;
   readonly launchArgs: readonly string[];
   readonly editors: readonly EditorDefinition[];
+  // Directories scanned to report what the workspace actually contains. Purely
+  // informational: unlike `editors`, these paths are never read for content and
+  // never written. See src/main/harness-artifacts.ts.
+  readonly artifactSources: readonly ArtifactSource[];
   readonly resetPaths: readonly string[];
 }
 
@@ -52,6 +58,10 @@ export const agentBridgeProviders = [
       },
     ],
     resetPaths: [".opencode/opencode.json", ".opencode/command/build-cluster-map.md"],
+    artifactSources: [
+      { kind: "skill", roots: [".opencode/skills", ".claude/skills", ".agents/skills"], layout: "skill-dir" },
+      { kind: "agent", roots: [".opencode/agent", ".opencode/agents"], layout: "markdown" },
+    ],
   },
   {
     id: "claude",
@@ -82,6 +92,10 @@ export const agentBridgeProviders = [
       },
     ],
     resetPaths: [".claude/settings.json", ".claude/commands/build-cluster-map.md"],
+    artifactSources: [
+      { kind: "skill", roots: [".claude/skills"], layout: "skill-dir" },
+      { kind: "agent", roots: [".claude/agents"], layout: "markdown" },
+    ],
   },
   {
     id: "copilot",
@@ -111,6 +125,10 @@ export const agentBridgeProviders = [
       },
     ],
     resetPaths: [".github/copilot/settings.json", ".github/skills/build-cluster-map/SKILL.md"],
+    artifactSources: [
+      { kind: "skill", roots: [".github/skills"], layout: "skill-dir" },
+      { kind: "agent", roots: [".github/agents"], layout: "markdown" },
+    ],
   },
 ] as const satisfies readonly AgentBridgeProvider[];
 

@@ -25,6 +25,7 @@
 /out/
 
 /.nyc_output/
+/tmp/
 
 *.DS_Store
 /.idea

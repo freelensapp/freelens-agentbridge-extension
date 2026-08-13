@@ -4,12 +4,15 @@ import { observer } from "mobx-react";
 import { useEffect, useRef, useState } from "react";
 import { agentBridgeProviders, getAgentBridgeProvider } from "../common/agentbridge-providers";
 import { CapabilitiesSection } from "./capabilities-section";
+import { HarnessArtifactsSection, HarnessInventoryChips } from "./harness-artifacts-section";
+import { loadHarnessInventory, opensCoalesceWindow, shouldRefresh, summarizeInventory } from "./harness-inventory";
 import { launchProviderSession } from "./launch-session";
 import { ProviderFileEditor } from "./provider-file-editor";
 import { loadProvider, loadSelectedProvider, saveSelectedProvider } from "./provider-selection";
 import { createRendererLaunchDeps } from "./renderer-launch";
 
 import type { AgentBridgeProviderId } from "../common/agentbridge-providers";
+import type { HarnessInventoryResult } from "../common/harness-artifacts";
 import type { ProviderLoadResult } from "./provider-selection";
 
 const CHANNEL_PREFIX = "agentbridge-extension:";
@@ -84,6 +87,115 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     setRetry((current) => current + 1);
   }
 
+  const [inventory, setInventory] = useState<HarnessInventoryResult | undefined>(undefined);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [artifactsExpanded, setArtifactsExpanded] = useState(false);
+  // Relative ages are pinned to the moment a scan landed, so rows do not drift
+  // on unrelated re-renders.
+  const [scanNow, setScanNow] = useState(() => Date.now());
+  const lastScanAt = useRef<number | undefined>(undefined);
+  // A ref, not `inventoryLoading`: restoring the window fires `focus` and
+  // `visibilitychange` in the same tick, and the state update from the first
+  // handler is not visible to the second. Without this both would reach the main
+  // process, which runs the scan synchronously and start to finish.
+  const scanInFlight = useRef(false);
+  // The inventory needs its own request counter: `generation` belongs to the
+  // provider check above, and bumping it here would cancel that in-flight load.
+  // The cluster/provider staleness check reuses the page's `currentRequest` ref.
+  const inventoryRequest = useRef(0);
+
+  function refreshInventory(force = false) {
+    if (!clusterId || !providerId || state.status !== "ready") return;
+    // A focus/visibility handler registered for an earlier selection can still
+    // fire between a selection change and its effect re-subscribing. The ref is
+    // always the live selection, so a stale closure becomes a no-op here rather
+    // than starting a scan that would only be thrown away.
+    if (currentRequest.current.clusterId !== clusterId || currentRequest.current.providerId !== providerId) return;
+
+    if (
+      !shouldRefresh({
+        lastScanAtMs: lastScanAt.current,
+        nowMs: Date.now(),
+        scanInFlight: scanInFlight.current,
+        force,
+      })
+    )
+      return;
+
+    const request = ++inventoryRequest.current;
+
+    scanInFlight.current = true;
+    setInventoryLoading(true);
+    void loadHarnessInventory(
+      clusterId,
+      providerId,
+      ipcRenderer.invoke,
+      () =>
+        inventoryRequest.current === request &&
+        currentRequest.current.clusterId === clusterId &&
+        currentRequest.current.providerId === providerId,
+    ).then((result) => {
+      // Clearing the spinner is gated on the request, not on the result: a
+      // discarded stale response must not leave it spinning forever. A
+      // superseded request leaves both flags to its successor, which owns them.
+      if (inventoryRequest.current !== request) return;
+      scanInFlight.current = false;
+      setInventoryLoading(false);
+      if (!result) return;
+      // Only a successful scan opens the coalescing window and pins the
+      // relative-age clock; a failure stays immediately retryable.
+      if (opensCoalesceWindow(result)) {
+        lastScanAt.current = Date.now();
+        setScanNow(lastScanAt.current);
+      }
+      setInventory(result);
+    });
+  }
+
+  // Declared before the scan effect on purpose: both react to
+  // [clusterId, providerId] and React runs effects in declaration order, so this
+  // reset always lands before the scan it would otherwise clobber. A fresh
+  // selection has no inventory yet; drop the previous provider's numbers rather
+  // than showing them against the new one.
+  useEffect(() => {
+    inventoryRequest.current++;
+    lastScanAt.current = undefined;
+    // The bump above orphans any in-flight scan, so its response will never
+    // clear the flag: release it here or the new selection could never scan.
+    scanInFlight.current = false;
+    setInventory(undefined);
+    setInventoryLoading(false);
+    setArtifactsExpanded(false);
+  }, [clusterId, providerId]);
+
+  // Mount, cluster switch, provider switch, Reset (which bumps `retry`) and the
+  // transition into "ready" — refreshInventory is a no-op until the provider
+  // check succeeds, so `state.status` has to be a dependency. Scans stay
+  // coalesced: the two moments that must always rescan (a new selection, and a
+  // completed Reset) clear `lastScanAt` first, and redundant status churn within
+  // the coalescing window is dropped.
+  useEffect(() => {
+    refreshInventory();
+  }, [clusterId, providerId, retry, state.status]);
+
+  // The agent mutates these files in a terminal tab the extension does not
+  // observe, so the panel is stale the moment /build-cluster-map finishes.
+  // Coming back to the page is the cheapest reliable moment to rescan.
+  useEffect(() => {
+    const onFocus = () => refreshInventory();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshInventory();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [clusterId, providerId, state.status]);
+
   function launch() {
     if (!provider || state.status !== "ready") return;
     setLaunching(true);
@@ -134,6 +246,13 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
       Renderer.Component.Notifications.error(`Reset failed: ${result.error ?? "unknown"}`);
       return;
     }
+    // A reset is a known mutation, so it must not be swallowed by the coalescing
+    // window of a scan that ran seconds ago, nor answered by a scan that started
+    // before the reset: orphan that one so its pre-reset numbers cannot land and
+    // hold the in-flight gate shut. retryProvider re-runs the scan effect below.
+    inventoryRequest.current++;
+    scanInFlight.current = false;
+    lastScanAt.current = undefined;
     retryProvider();
   }
 
@@ -167,6 +286,12 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
             {hasCurrentSelection && state.status === "ready" && (
               <>
                 <Renderer.Component.StatusBrick className="running" /> {provider?.name} v{state.version}
+                {inventory?.status === "ok" && (
+                  <HarnessInventoryChips
+                    summary={summarizeInventory(inventory.groups, scanNow)}
+                    onSelect={() => setArtifactsExpanded(true)}
+                  />
+                )}
               </>
             )}
             {hasCurrentSelection && state.status === "loading" && (
@@ -246,6 +371,14 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
                   </Renderer.Component.Button>
                 </div>
               </div>
+              <HarnessArtifactsSection
+                result={inventory}
+                loading={inventoryLoading}
+                expanded={artifactsExpanded}
+                onToggle={() => setArtifactsExpanded((value) => !value)}
+                onRefresh={() => refreshInventory(true)}
+                nowMs={scanNow}
+              />
               {provider.editors.map((editor) => (
                 <ProviderFileEditor key={editor.path} clusterId={clusterId} providerId={provider.id} editor={editor} />
               ))}

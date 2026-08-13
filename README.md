@@ -53,6 +53,9 @@ wrong environment. This extension removes all of that:
 - **In-app editors** — edit each provider's instruction and permission
   files in a Monaco editor inside Freelens, with debounced autosave, JSON
   and Markdown highlighting, and an auto/dark/light theme toggle.
+- **Workspace artifacts** — see how many skills and custom agents the
+  cluster's workspace holds and when each last changed, with a drill-down
+  list, without leaving the page or opening the directory.
 - **Availability checks** — the extension probes the selected CLI on
   `PATH` (`--version`) before offering a session, with a retry action, a
   link to the provider's install docs, and a configurable probe timeout.
