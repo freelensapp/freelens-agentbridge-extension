@@ -65,6 +65,29 @@ describe("provider scaffolds", () => {
     expect(content).toContain("<!-- END AGENTBRIDGE CLUSTER MAP -->");
   });
 
+  it.each(agentBridgeProviders)("writes cluster-map skills into a scanned skill root for %s", (provider) => {
+    const command = provider.editors.find((editor) => editor.role === "command");
+    const sourceRel = (command as { source?: string; path: string }).source ?? (command as { path: string }).path;
+    const content = readFileSync(path.join(resolveProviderScaffold(provider.id), sourceRel), "utf8");
+
+    // The command tells the agent where to persist skills; that directory must be
+    // one the artifact scanner actually looks at, or the skills stay invisible.
+    const skillRoots = provider.artifactSources.find(({ kind }) => kind === "skill")?.roots ?? [];
+    expect(skillRoots.length).toBeGreaterThan(0);
+
+    for (const skillPath of content.match(/`[^`]*\/SKILL\.md`/g) ?? []) {
+      const rel = skillPath.slice(1, -1);
+      expect(
+        skillRoots.some((root) => rel.startsWith(`${root}/`)),
+        `${rel} is outside ${skillRoots}`,
+      ).toBe(true);
+    }
+
+    const [primaryRoot] = skillRoots;
+    expect(content).toContain(`${primaryRoot}/ns-map-<namespace>/SKILL.md`);
+    expect(content).toContain(`${primaryRoot}/cluster-map-<cluster>/SKILL.md`);
+  });
+
   it("caps parallel exploration at 5 subagents for providers that support them", () => {
     for (const providerId of ["opencode", "claude"] as const) {
       const provider = agentBridgeProviders.find((candidate) => candidate.id === providerId);
