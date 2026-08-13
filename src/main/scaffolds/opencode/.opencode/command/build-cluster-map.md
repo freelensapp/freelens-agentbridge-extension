@@ -52,7 +52,7 @@ it **merges/refreshes** what already exists instead of duplicating it.
      are available; and a short "health & risks" note.
 
 3. **Write one skill per namespace.**
-   - Path: `.opencode/skill/ns-map-<namespace>/SKILL.md`.
+   - Path: `.opencode/skills/ns-map-<namespace>/SKILL.md`.
    - Front matter:
      ```
      ---
@@ -64,7 +64,7 @@ it **merges/refreshes** what already exists instead of duplicating it.
      stays fresh.
 
 4. **Write one cluster-level skill.**
-   - Path: `.opencode/skill/cluster-map-<cluster>/SKILL.md`.
+   - Path: `.opencode/skills/cluster-map-<cluster>/SKILL.md`.
    - Cluster-wide detail only — nodes, versions/distribution, CRDs, ingress
      controllers, StorageClasses, cross-namespace relationships, cluster-scoped
      RBAC. **Do not** duplicate the short navigation map below.
