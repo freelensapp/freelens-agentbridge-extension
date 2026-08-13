@@ -112,6 +112,16 @@ of its `ns-map-<namespace>` skills.
 - An **unknown provider id** throws (project convention for invalid programmer
   input) rather than returning an error result; the rejected `invoke` is turned
   back into an error result by `loadHarnessInventory` in the renderer.
+- A **missing IPC handler** — Electron's `No handler registered for
+  'agentbridge-extension:list-provider-artifacts'` — is rewritten by
+  `describeInventoryError` into the one remedy that works: quit Freelens and
+  reopen it. Freelens re-requires the renderer entry on every window reload, but
+  `ExtensionLoader` skips any extension already present in `extensionInstances`,
+  so the main process never re-runs `onActivate` and never registers a channel
+  added after startup. Upgrading the extension in place, or rebuilding it while
+  Freelens runs, therefore leaves a new renderer talking to an old main process.
+  No renderer-side retry can fix that, which is why the message names the fix
+  instead of the fault.
 
 ## Security posture
 
