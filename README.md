@@ -47,12 +47,14 @@ wrong environment. This extension removes all of that:
   persistent directory under
   `<userData>/agentbridge-sessions/<safe-cluster-id>/<provider-id>/`.
 - **Pre-seeded guardrails** — on first open, the extension copies
-  provider-native scaffold files into the workspace: instructions plus a
+  provider-native scaffold files into the workspace: instructions, a
   permission file that allows read-only `kubectl`/`helm` and asks for
-  everything else.
-- **In-app editors** — edit each provider's instruction and permission
-  files in a Monaco editor inside Freelens, with debounced autosave, JSON
-  and Markdown highlighting, and an auto/dark/light theme toggle.
+  everything else, and a `/build-cluster-map` command (a skill on Copilot
+  CLI). Only missing files are written, so your edits are never overwritten.
+- **In-app editors** — edit each provider's instruction, permission and
+  command files in a Monaco editor inside Freelens, with debounced
+  autosave, JSON and Markdown highlighting, and an auto/dark/light theme
+  toggle.
 - **Workspace artifacts** — see how many skills and custom agents the
   cluster's workspace holds and when each last changed, with a drill-down
   list, without leaving the page or opening the directory.
@@ -64,8 +66,11 @@ wrong environment. This extension removes all of that:
 - **Open in editor** — open the workspace as a project in VS Code or a
   fork (`codium`, `cursor`, ...), falling back to the editor's URL handler
   when the CLI is not on `PATH`.
-- **Reset** — restore only the managed permission file to its default;
-  instructions and any other files the agent created stay untouched.
+- **Reset** — restore the two managed files — the permission/settings file
+  and the `/build-cluster-map` command — to their bundled defaults. Both are
+  deleted and re-seeded, so local edits to either are lost; the instructions
+  file and every other file in the workspace stay untouched. The confirm
+  dialog lists the exact paths before anything is removed.
 
 <img src="docs/images/opencode-permission-settings.png" width="800" alt="OpenCode permission editor">
 
@@ -166,11 +171,14 @@ directory.
 On first open, the extension seeds the workspace with each provider's native
 files:
 
-| Provider           | Instructions                      | Permissions / settings          |
-| ------------------ | --------------------------------- | ------------------------------- |
-| OpenCode           | `AGENTS.md`                       | `.opencode/opencode.json`       |
-| Claude Code        | `CLAUDE.md`                       | `.claude/settings.json`         |
-| GitHub Copilot CLI | `.github/copilot-instructions.md` | `.github/copilot/settings.json` |
+| Provider           | Instructions                      | Permissions / settings          | Command / skill                             |
+| ------------------ | --------------------------------- | ------------------------------- | ------------------------------------------- |
+| OpenCode           | `AGENTS.md`                       | `.opencode/opencode.json`       | `.opencode/command/build-cluster-map.md`    |
+| Claude Code        | `CLAUDE.md`                       | `.claude/settings.json`         | `.claude/commands/build-cluster-map.md`     |
+| GitHub Copilot CLI | `.github/copilot-instructions.md` | `.github/copilot/settings.json` | `.github/skills/build-cluster-map/SKILL.md` |
+
+Seeding only ever creates files that are absent — an existing file is left
+exactly as you last edited it.
 
 When you launch a session, the extension opens a Freelens terminal tab —
 which already carries the active cluster's `KUBECONFIG` via Freelens'
@@ -178,10 +186,22 @@ built-in terminal infrastructure — changes into the workspace, and starts
 the CLI. The agent picks up its instruction and permission files exactly as
 it would in any project directory.
 
-**Reset** removes and re-seeds only the managed permission file
-(`.opencode/opencode.json`, `.claude/settings.json`, or
-`.github/copilot/settings.json`). Instruction files and anything else in the
-workspace are preserved.
+**Reset** removes and re-seeds the two managed files of the selected
+provider — the permission/settings file **and** the `/build-cluster-map`
+command (a skill on Copilot CLI):
+
+- **OpenCode** — `.opencode/opencode.json` and
+  `.opencode/command/build-cluster-map.md`
+- **Claude Code** — `.claude/settings.json` and
+  `.claude/commands/build-cluster-map.md`
+- **GitHub Copilot CLI** — `.github/copilot/settings.json` and
+  `.github/skills/build-cluster-map/SKILL.md`
+
+Both files are deleted and copied back from the bundled scaffold, so any
+change you made to them is discarded. The instructions file, workspace
+skills and agents, and anything else the agent created are preserved. The
+confirm dialog lists the exact paths for the selected provider before
+removing anything.
 
 ## Configuring your agent
 

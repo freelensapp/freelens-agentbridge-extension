@@ -39,7 +39,9 @@ be run, the inventory describes what **exists** on disk — including everything
 - **`src/main/harness-artifacts.ts`** — `listProviderArtifacts(userData,
   clusterId, providerId)` walks exactly those roots under
   `resolveVerifiedWorkdir(...)`, one directory level per root, and returns
-  metadata only.
+  metadata only. `listBoundedEntries` is how each root is read: an `opendirSync`
+  cursor pulled only as far as the remaining entry budget, so the listing itself
+  is bounded and never a `readdirSync` of the whole directory.
 - **`src/main/read-frontmatter.ts`** — reads at most the first 4096 bytes of each
   artifact file and extracts `name` and `description` with a line-oriented reader.
 - **`src/main/index.ts`** — registers the IPC channel
@@ -134,7 +136,7 @@ loosening of them:
 - The scan root is always `resolveVerifiedWorkdir(userData, clusterId,
   providerId)`; it is never caller-supplied.
 - **Each declared root is resolved with `realpathSync` and containment-checked
-  against the workdir before the first `readdir`.** A lexical check on the joined
+  against the workdir before the directory is opened.** A lexical check on the joined
   path would be dead code — declared roots never contain `..` — while a root that
   is *itself* a symlink out of the workspace would otherwise be listed and
   stat-ed, which is an existence oracle even if every entry were discarded later.
@@ -177,6 +179,17 @@ loosening of them:
   it, so a workspace full of duplicate names would cost one `lstat`, one
   `realpath` and one 4 KiB read per entry with nothing bounding the total —
   seconds of a frozen Freelens window, because this IPC handler is synchronous.
+- **The budget is enforced on the LISTING, not only on the loop.** Roots are read
+  with `opendirSync` and a bounded pull (`listBoundedEntries`), never with
+  `readdirSync`: a full listing materialises one `Dirent` per entry and the
+  alphabetical sort then collates all of them, both *before* the budget is
+  consulted once — measured at ~70 ms and ~11 MB for a 100k-entry directory,
+  against ~2 ms for a bounded pull. A cap on entries examined does not bound
+  entries listed, which is the same lesson as the bullet above, one layer up.
+  One `readSync` past the budget distinguishes "the directory ended" from "we
+  stopped", so a root whose entries were never listed — including one skipped
+  entirely because an earlier root used the budget up — still reports
+  `truncated` instead of an authoritative count.
 
 ## Frontmatter reading
 
@@ -305,7 +318,11 @@ highest-precedence first. No scanner, IPC or UI change is needed. Note that
   Containment tests then assert what the scan touched, not just that the result
   was empty: "zero artifacts" would also pass with the guard removed, because a
   later check discards the results anyway. The work-budget test asserts on
-  recorded syscall counts rather than elapsed time, and the body-leak canary is
+  recorded syscall counts rather than elapsed time; its companion counts
+  `Dir.readSync()` calls (with `bufferSize: 1` forced in the mock, since libuv
+  otherwise prefetches 32 entries per syscall) and asserts `readdirSync` is never
+  called at all, because a bounded *loop* over an unbounded *listing* would
+  satisfy the syscall counts on their own. The body-leak canary is
   shaped `description: SUPER-SECRET-BODY` in a file with no closing delimiter,
   because a canary containing no `:` would pass by construction.
 - `src/renderer/harness-inventory.test.ts` — age ladder boundaries, chip labels,
@@ -331,9 +348,17 @@ highest-precedence first. No scanner, IPC or UI change is needed. Note that
   first 4096 bytes, and so does an artifact file that has more than one hard link.
 - A kind whose workspace holds more than `MAX_ENTRIES_SCANNED` (2000) directory
   entries is reported as `truncated` with no attempt to be exhaustive; its
-  `examinedCount` and mtime range describe the first 2000 entries in name order,
-  not the whole directory. Both budgets exist to keep a synchronous main-process
-  handler bounded, and neither is configurable.
+  `examinedCount` and mtime range describe those 2000 entries, not the whole
+  directory. Both budgets exist to keep a synchronous main-process handler
+  bounded, and neither is configurable.
+- **Which** 2000 entries is not defined. The bounded pull takes them in directory
+  order, so the kept set can differ between refreshes of an unchanged workspace.
+  Listing the whole directory first would make truncation alphabetical and stable,
+  and that is exactly the unbounded work the budget exists to prevent; the group
+  is flagged `truncated` and rendered in mtime order either way, so the previous
+  ordering was never a guarantee anyone could see. Entries that *are* listed are
+  still sorted by name before they are examined, so dedup across roots stays
+  deterministic for a directory under the budget.
 - OpenCode's agent directory is declared in both the singular and plural
   spellings pending verification against an installed OpenCode; the dedup-by-name
   rule makes the redundant spelling harmless.
