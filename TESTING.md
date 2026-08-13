@@ -2,7 +2,8 @@
 
 ## Strategy
 
-Vitest unit tests cover common, main-process, renderer, and package metadata behavior in a Node environment.
+Vitest unit tests cover common, main-process, renderer, package metadata, and documentation behavior in a Node environment.
+Documentation tests (`src/readme-docs.test.ts`) pin user-facing prose about destructive actions to the provider registry, so a registry change that widens what Reset removes fails until the README says so.
 Freelens host integration and rendered UI behavior require a manual smoke check because no integration or E2E suite exists.
 
 ## Conventions
