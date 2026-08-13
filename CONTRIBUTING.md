@@ -62,6 +62,19 @@ New-Item -ItemType Junction -Path "$env:LOCALAPPDATA\Freelens\extensions\freelen
 
 Then `pnpm build` and reload Freelens (`Ctrl+R` / `Cmd+R`).
 
+> **A reload only picks up `src/renderer/` changes.** Freelens re-requires the
+> renderer entry on every window reload, but the main process keeps its
+> extension instance for the life of the app and never calls `onActivate`
+> again — so nothing under `src/main/` is reloaded, and IPC handlers registered
+> there stay as they were at startup. After changing main-process code, **quit
+> Freelens completely and reopen it**. The symptom of skipping this is a new
+> renderer invoking a channel the old main process never registered:
+>
+> ```
+> Error invoking remote method 'agentbridge-extension:<channel>':
+> Error: No handler registered for 'agentbridge-extension:<channel>'
+> ```
+
 ## Debug
 
 - **Renderer errors:** `Ctrl+Shift+I` in Freelens → Console tab.

@@ -85,6 +85,12 @@ The extension detects agents on `PATH`; it does not bundle or update them.
 
 Open Freelens, go to **Extensions**, and install the extension archive.
 
+**After installing or upgrading, restart Freelens completely.** Freelens loads
+extension code into its main process once per app run, so a window reload picks
+up the new UI but leaves the old main process behind. Symptoms are errors of the
+form `No handler registered for 'agentbridge-extension:…'`; quitting and
+reopening Freelens clears them.
+
 ### 3. Launch a session
 
 Open a cluster, click **Freelens Agent Bridge** in the sidebar, select a
