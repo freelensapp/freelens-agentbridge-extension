@@ -30,6 +30,11 @@ type FsCallMode = "resolve" | "parent";
 
 const fsAudit = vi.hoisted(() => ({
   calls: [] as { fn: string; mode: "resolve" | "parent"; target: string }[],
+  // Every `Dir.readSync()` the scan performs. `calls` records that a directory
+  // was opened; only this records how much of it was pulled, which is the whole
+  // claim of the entry budget — a cursor opened on a million-entry directory is
+  // free, reading it to the end is not.
+  dirReads: 0,
   // Paths whose lstat is made to claim "plain file" no matter what they are.
   // The one thing a real filesystem cannot be asked to do is lose a race on
   // demand, so this stands in for a path that was a regular file when it was
@@ -77,10 +82,29 @@ vi.mock("node:fs", async (importOriginal) => {
     return resolved;
   }) as unknown as typeof actual.realpathSync;
 
+  // Counts entries actually pulled off the cursor. `bufferSize: 1` keeps the
+  // count honest: at the default the libuv layer prefetches 32 entries per
+  // syscall, so a scan could over-read by 31 and the audit would never see it.
+  const countingOpendirSync = ((target: unknown, options?: object) => {
+    const dir = (actual.opendirSync as (...args: unknown[]) => import("node:fs").Dir)(target, {
+      ...options,
+      bufferSize: 1,
+    });
+    const readSync = dir.readSync.bind(dir);
+
+    dir.readSync = () => {
+      fsAudit.dirReads++;
+      return readSync();
+    };
+
+    return dir;
+  }) as typeof actual.opendirSync;
+
   const mocked = {
     ...actual,
     lstatSync: record("lstatSync", "parent", racyLstatSync),
     openSync: record("openSync", "resolve", actual.openSync),
+    opendirSync: record("opendirSync", "resolve", countingOpendirSync),
     readdirSync: record("readdirSync", "resolve", actual.readdirSync),
     readFileSync: record("readFileSync", "resolve", actual.readFileSync),
     realpathSync: Object.assign(racyRealpathSync, { native: actual.realpathSync.native }),
@@ -141,6 +165,7 @@ function groupFor(result: HarnessInventoryResult, kind: "skill" | "agent"): Harn
 // not the fixture setup that ran before it.
 function scanWithAudit(userData: string, clusterId: string, providerId: string): HarnessInventoryResult {
   fsAudit.calls.length = 0;
+  fsAudit.dirReads = 0;
 
   return listProviderArtifacts(userData, clusterId, providerId);
 }
@@ -168,6 +193,7 @@ function callsTo(name: string): { fn: string; mode: FsCallMode; target: string }
 
 afterEach(() => {
   fsAudit.calls.length = 0;
+  fsAudit.dirReads = 0;
   fsAudit.pretendRegularFiles.clear();
   fsAudit.swapOnRealpath.clear();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -493,6 +519,81 @@ describe("listProviderArtifacts", () => {
     expect(callsTo("openSync").length).toBeLessThanOrEqual(MAX_ENTRIES_SCANNED);
     expect(callsTo("lstatSync").length).toBeLessThanOrEqual(MAX_ENTRIES_SCANNED);
     expect(group.truncated).toBe(true);
+  });
+
+  // One layer up from the test above, and the same lesson: a cap on entries
+  // EXAMINED does not bound entries LISTED. `readdirSync` materialises the whole
+  // directory and the alphabetical sort walks all of it, both before the budget
+  // is consulted once — so the loop was bounded while the syscall in front of it
+  // was not. Only a cursor makes the listing itself stop.
+  it("stops listing a directory at the entry budget instead of materialising it", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    const total = MAX_ENTRIES_SCANNED + 100;
+
+    // Plain files, not skill directories: the skill-dir layout ignores them, so
+    // they cost nothing but a budget charge each — which is precisely the case
+    // MAX_ARTIFACTS_PER_KIND cannot bound.
+    mkdirSync(path.join(workdir, ".claude/skills"), { recursive: true });
+    for (let index = 0; index < total; index++) {
+      writeFileSync(path.join(workdir, ".claude/skills", `not-a-skill-${String(index).padStart(5, "0")}`), "", "utf8");
+    }
+
+    const group = groupFor(scanWithAudit(userData, "cluster-1", "claude"), "skill");
+
+    // Without this the assertion below is vacuous: reintroducing `readdirSync`
+    // would leave zero cursor reads and a listing bounded by nothing.
+    expect(callsTo("readdirSync")).toEqual([]);
+    // The budget, plus the single read past it that distinguishes "the directory
+    // ended" from "we stopped".
+    expect(fsAudit.dirReads).toBeLessThanOrEqual(MAX_ENTRIES_SCANNED + 1);
+    expect(group.count).toBe(0);
+    expect(group.truncated).toBe(true);
+  });
+
+  // The budget is per KIND across roots, so it can run out at a root boundary
+  // rather than mid-root. Skipping the remaining roots there is correct; doing it
+  // silently is not — the header would print an authoritative count for a scan
+  // that never looked at a whole directory.
+  it("reports truncation when the budget runs out before a later root is listed", () => {
+    const { userData, workdir } = createWorkspace("opencode");
+
+    // Exactly the budget, in entries that yield no artifact: the per-kind cap
+    // never fires, so truncation can only come from the entry budget.
+    mkdirSync(path.join(workdir, ".opencode/skills"), { recursive: true });
+    for (let index = 0; index < MAX_ENTRIES_SCANNED; index++) {
+      writeFileSync(
+        path.join(workdir, ".opencode/skills", `not-a-skill-${String(index).padStart(5, "0")}`),
+        "",
+        "utf8",
+      );
+    }
+    // Third declared root, never reached.
+    writeSkill(workdir, ".agents/skills", "dropped-with-the-root");
+
+    const group = groupFor(listProviderArtifacts(userData, "cluster-1", "opencode"), "skill");
+
+    expect(group.count).toBe(0);
+    expect(group.truncated).toBe(true);
+  });
+
+  // The mirror image: an exhausted budget must not invent truncation for roots
+  // that hold nothing, or every workspace with a large first root would report a
+  // floor it does not have.
+  it("does not report truncation when the unlisted roots are empty or absent", () => {
+    const { userData, workdir } = createWorkspace("opencode");
+
+    mkdirSync(path.join(workdir, ".opencode/skills"), { recursive: true });
+    for (let index = 0; index < MAX_ENTRIES_SCANNED; index++) {
+      writeFileSync(
+        path.join(workdir, ".opencode/skills", `not-a-skill-${String(index).padStart(5, "0")}`),
+        "",
+        "utf8",
+      );
+    }
+    // Second root exists but is empty; the third does not exist at all.
+    mkdirSync(path.join(workdir, ".claude/skills"), { recursive: true });
+
+    expect(groupFor(listProviderArtifacts(userData, "cluster-1", "opencode"), "skill").truncated).toBe(false);
   });
 
   // Truncation drops artifacts in NAME order while the group is displayed in

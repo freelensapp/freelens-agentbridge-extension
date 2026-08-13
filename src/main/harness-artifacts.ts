@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync, realpathSync } from "node:fs";
+import { lstatSync, opendirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { getAgentBridgeProvider } from "../common/agentbridge-providers";
 import { buildArtifactGroup, MAX_ARTIFACTS_PER_KIND, MAX_ENTRIES_SCANNED } from "../common/harness-artifacts";
@@ -35,10 +35,11 @@ function toWorkspaceRelative(workdir: string, target: string): string {
 // The check is on the root's REAL path, not on the path we built: declared roots
 // never contain "..", so a lexical check can never fail and would be dead code.
 // The reachable attack is a root (or one of its parents) that is ITSELF a
-// symlink out of the workspace — `readdirSync` follows it happily, and the scan
+// symlink out of the workspace — `opendirSync` follows it happily, and the scan
 // would list and lstat an out-of-workspace tree. The per-entry check downstream
 // would still discard those results, but the listing itself is an existence
-// oracle, so the containment decision has to happen before the first readdir.
+// oracle, so the containment decision has to happen before the directory is
+// opened.
 //
 // Everything below the returned directory is therefore rooted inside the
 // workdir, and only symlinks below it can still escape.
@@ -70,6 +71,55 @@ function artifactFileFor(source: ArtifactSource, rootDir: string, entry: Dirent)
   return entry.isFile() && entry.name.toLowerCase().endsWith(".md") ? path.join(rootDir, entry.name) : undefined;
 }
 
+// List at most `budget` entries of a directory, and report whether it held more.
+//
+// `readdirSync` cannot be used here, and the reason is the same lesson as the
+// per-entry budget one layer down: a cap on entries EXAMINED does not bound
+// entries LISTED. `readdirSync` materialises the WHOLE directory — one Dirent
+// per entry, all resident — and the alphabetical sort that followed it was an
+// O(n log n) Intl collation over all of them, both of them completing before the
+// budget was consulted even once. Measured, a 100k-entry directory costs ~70 ms
+// to list and collate and ~11 MB of resident Dirents, synchronously, inside an
+// ipcMain handler on the Electron main process: not a slow query, a frozen
+// window. The curve is n log n, so a workspace an agent filled in a loop pays
+// seconds. And the scan re-runs on mount, provider switch, cluster switch,
+// Reset, window focus and visibilitychange, so alt-tabbing back into Freelens is
+// enough to pay it again.
+//
+// `opendirSync` is a cursor, so the listing itself stops at the budget (~2 ms for
+// the same directory) and memory is bounded by the budget rather than by the
+// workspace.
+//
+// The tradeoff is real and deliberate: sorting the full listing made truncation
+// alphabetical and stable — always the same first 2000 names — while a bounded
+// pull takes entries in directory order, so WHICH entries are dropped is
+// arbitrary and may change between refreshes. The group is flagged `truncated`
+// and rendered in mtime order either way, so that determinism was never visible
+// as an ordering guarantee; it is not worth an unbounded main-process stall.
+function listBoundedEntries(rootDir: string, budget: number): { entries: Dirent[]; more: boolean } {
+  const dir = opendirSync(rootDir);
+
+  try {
+    const entries: Dirent[] = [];
+
+    while (entries.length < budget) {
+      const entry = dir.readSync();
+
+      if (entry === null) return { entries, more: false };
+
+      entries.push(entry);
+    }
+
+    // One read past the budget, never kept: it is the whole difference between
+    // "the directory ended" and "we stopped", which is what `truncated` reports.
+    // With a budget of 0 this is the only read performed, which is how an
+    // already-exhausted budget still notices that a later root holds entries.
+    return { entries, more: dir.readSync() !== null };
+  } finally {
+    dir.closeSync();
+  }
+}
+
 function fallbackNameFor(source: ArtifactSource, entryName: string): string {
   if (source.layout === "skill-dir") return entryName;
 
@@ -89,33 +139,40 @@ function scanSource(workdir: string, source: ArtifactSource, seededPaths: Readon
   let truncated = false;
 
   for (const root of source.roots) {
-    if (entriesScanned >= MAX_ENTRIES_SCANNED) break;
-
+    // No early `break` on an exhausted budget: a root skipped without listing is
+    // a root whose entries were dropped, and leaving `truncated` false there had
+    // the header claim an authoritative count. The budget is per KIND across
+    // roots, so with three declared roots that is reachable. Falling through
+    // instead costs one `readSync` per remaining root — see listBoundedEntries,
+    // which reports `more` for a budget of 0 without listing anything.
     const rootDir = resolveRootDir(workdir, root);
 
+    // An absent root dropped nothing, so it never reports truncation.
     if (!rootDir) continue;
 
-    let entries: Dirent[];
+    let listing: { entries: Dirent[]; more: boolean };
 
     try {
-      entries = readdirSync(rootDir, { withFileTypes: true });
+      // The work budget, charged for EVERY entry considered and enforced on the
+      // LISTING, not just on the loop below. MAX_ARTIFACTS_PER_KIND bounds the
+      // result and cannot bound the work: entries dropped by dedup, and
+      // directories holding no artifact file, never reach it, so a workspace of
+      // 200k such entries would keep this synchronous handler lstat-ing,
+      // realpath-ing and head-reading until the window unfroze.
+      listing = listBoundedEntries(rootDir, MAX_ENTRIES_SCANNED - entriesScanned);
     } catch {
       // A root that is not a directory (ENOTDIR) or not readable (EACCES)
       // simply contributes nothing.
       continue;
     }
 
-    for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
-      // The work budget, charged for EVERY entry considered. MAX_ARTIFACTS_PER_
-      // KIND bounds the result and cannot bound the work: entries dropped by
-      // dedup, and directories holding no artifact file, never reach it, so a
-      // workspace of 200k such entries would keep this synchronous handler
-      // lstat-ing, realpath-ing and head-reading until the window unfroze.
-      if (entriesScanned >= MAX_ENTRIES_SCANNED) {
-        truncated = true;
-        break;
-      }
+    if (listing.more) truncated = true;
 
+    // Bounded by the budget, so the collation cost is bounded with it. In place:
+    // the array never left listBoundedEntries.
+    listing.entries.sort((left, right) => left.name.localeCompare(right.name));
+
+    for (const entry of listing.entries) {
       entriesScanned++;
 
       // Dirent.isSymbolicLink() has lstat semantics: an entry that is itself a
