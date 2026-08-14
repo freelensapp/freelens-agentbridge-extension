@@ -41,23 +41,10 @@ high-leverage items below close that gap.
   in the UI/settings instead of hardcoded empty arrays.
 - **4c. Custom tools scaffolding** — templates for provider-native custom tools.
   (existing: *development of custom tools*)
-- **4d. Open in text editor** — open managed files in an external editor
-  (VS Code / IDE). (existing: *open in text editor -> vscode/IDE maybe*)
 
 ## 5. Safety & guardrails
 
-- **5a. Read-only / namespace-scoped mode** — generate a restricted
-  `KUBECONFIG` (read-only or single-namespace) for a launch, complementing the
-  CLI-native guardrails. (open question: is this in scope, or do we keep
-  Kubernetes RBAC as the only security boundary per the README's stance?)
 - **5b. Command audit log** — optional record of what ran in a session.
-
-## 6. Quality-of-life
-
-- **6a. Providers doctor panel** — show all providers' `PATH` status at once,
-  not just the selected one.
-- **6b. Session disk-usage / cleanup view** — list and prune
-  `agentbridge-sessions/` workdirs.
 
 ## MCP servers (reminder — no concrete item yet)
 
@@ -71,13 +58,3 @@ observability (Prometheus / Grafana / Loki / Datadog), cloud provider APIs
 (AWS / GCP / Azure), incident & delivery (PagerDuty / GitHub / GitLab / Jira),
 and internal knowledge/docs. No specific external server is planned right now;
 if a concrete one lands, reintroduce it here as a real item.
-
-## Suggested priority order
-
-1. **1a** (inject live cluster context) — biggest capability jump for least
-   code, scaffold-driven.
-2. **2a** ("Ask the agent" from a resource) — makes it feel native to Freelens.
-3. **3a** (artifact browser + apply) — closes the loop from "agent suggests" to
-   "cluster changes".
-4. **4a** (more providers) — cheap breadth.
-5. Everything else as follow-up.
