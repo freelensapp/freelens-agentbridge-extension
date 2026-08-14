@@ -36,7 +36,11 @@ high-leverage items below close that gap.
 ## 4. Provider coverage & configuration
 
 - **4a. More providers** — registry additions are cheap: Gemini CLI, Codex CLI,
-  Cursor CLI, Aider, Amazon Q.
+  Cursor CLI, Aider, Amazon Q. Researched for Codex CLI in
+  [`docs/plans/2026-08-14-codex-cli-support.md`](plans/2026-08-14-codex-cli-support.md)
+  — it is *not* registry-only: TOML config, a directory-trust gate, a sandbox
+  that blocks the cluster API server by default, and no project-local slash
+  commands each need a decision.
 - **4b. Model + extra-args per provider** — expose `launchArgs`/model selection
   in the UI/settings instead of hardcoded empty arrays.
 - **4c. Custom tools scaffolding** — templates for provider-native custom tools.
