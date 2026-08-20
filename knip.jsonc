@@ -1,0 +1,38 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema-jsonc.json",
+
+  "entry": [
+    "out/{main,renderer}/index.js!",
+    "src/main/index.ts",
+    "src/renderer/index.tsx",
+    "src/**/*.{test,spec}.{ts,tsx}",
+    "test/**/*.{ts,tsx}"
+  ],
+  "project": ["*.{js,mjs,ts}", "out/**/*.js!", "src/**/*.{ts,tsx}"],
+
+  "ignoreBinaries": [
+    "electron-rebuild",
+    "yq",
+    // used via shell in read-frontmatter tests
+    "mkfifo"
+  ],
+  "ignoreDependencies": [
+    // used as vite plugin
+    "@babel/plugin-proposal-decorators",
+    // provided by the Electron runtime in the Freelens host
+    "electron",
+    // bundled into out/renderer by the production build, so the production
+    // graph (out/main entry) never sees the import
+    "monaco-editor",
+    "@monaco-editor/react"
+  ],
+
+  "typescript": {
+    "config": ["tsconfig.json"]
+  },
+  "vite": {
+    "config": ["electron.vite.config.js"]
+  },
+
+  "exclude": ["exports"]
+}

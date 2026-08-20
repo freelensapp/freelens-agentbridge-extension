@@ -1,18 +1,3 @@
-# Workflow summary:
-# - Purpose: create a release tag on main after an automated version PR is merged or explicitly approved.
-# - Depends on: output from workflow "Automated npm version" (expects PR title prefix "Automated npm version").
-# - Trigger:
-#   - Automatic event: on closed pull requests targeting main, to create a tag when an "Automated npm version" PR is merged.
-#   - Comment command: on pull request comments, by repository maintainers, to create a tag when /tag is posted on a closed "Automated npm version" PR.
-# - Steps:
-#   - Checkout main with full git history.
-#   - Read the version from package.json at the PR merge commit.
-#   - Verify the version is a stable release (X.Y.Z only).
-#   - Create tag vX.Y.Z on the PR merge commit via GitHub API, unless it already exists.
-# - Docs:
-#   - https://docs.github.com/rest/git/refs
-#   - https://github.com/actions/github-script
-
 name: Automated tag
 
 on:
@@ -26,7 +11,8 @@ on:
       - closed
 
 permissions:
-  contents: read
+  contents: write
+  id-token: write
   pull-requests: read
 
 jobs:
@@ -37,46 +23,10 @@ jobs:
     environment: automated
     timeout-minutes: 10
 
-    if: >-
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
-      startsWith(github.event.issue.title, 'Automated npm version') && github.event.issue.state == 'closed' &&
-      github.event.comment.body == '/tag' &&
-      (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' ||
-      github.event.comment.author_association == 'COLLABORATOR')) ||
-      (github.event_name == 'pull_request' && startsWith(github.event.pull_request.title, 'Automated npm version') &&
-      github.event.pull_request.merged && github.event.pull_request.head.ref == 'automated/npm-version')
+    if: (startsWith(github.event.issue.title, 'Automated npm version') && github.event.issue.state == 'closed' && github.event.comment.body == '/tag') || (startsWith(github.event.pull_request.title, 'Automated npm version') && github.event.pull_request.merged)
     steps:
-      - name: Resolve merged pull request
-        id: pull-request
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const pullNumber = context.eventName === "pull_request"
-              ? context.payload.pull_request.number
-              : context.payload.issue.number;
-            const { data: pullRequest } = await github.rest.pulls.get({
-              owner,
-              repo,
-              pull_number: pullNumber,
-            });
-
-            if (
-              pullRequest.state !== "closed" ||
-              !pullRequest.merged ||
-              pullRequest.base.ref !== "main" ||
-              pullRequest.head.ref !== "automated/npm-version" ||
-              !pullRequest.title.startsWith("Automated npm version") ||
-              !pullRequest.merge_commit_sha
-            ) {
-              core.setFailed(`Pull request #${pullNumber} is not a merged Automated npm version PR for main.`);
-              return;
-            }
-
-            core.setOutput("merge-commit", pullRequest.merge_commit_sha);
-
       - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: main
@@ -84,62 +34,32 @@ jobs:
       - name: Get version from package.json
         id: package-json
         run: |
-          set -eo pipefail
-          version="$(git show "${TARGET_COMMIT}:package.json" | jq -r .version)"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-        env:
-          TARGET_COMMIT: ${{ steps.pull-request.outputs.merge-commit }}
+          echo "version=$(yq -r .version package.json)" >> $GITHUB_OUTPUT
 
       - name: Check if version is release
         id: check-version
         run: |
-          if [[ "${{ steps.package-json.outputs.version }}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ "${{ steps.package-json.outputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "is_release=true" >> $GITHUB_OUTPUT
           else
             echo "is_release=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create tag from the pull request merge commit
+      - name: Create tag from the main branch
         if: steps.check-version.outputs.is_release == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        env:
-          VERSION: ${{ steps.package-json.outputs.version }}
-          TARGET_COMMIT: ${{ steps.pull-request.outputs.merge-commit }}
+        uses: actions/github-script@v9
         with:
-          github-token: ${{ secrets.GH_TOKEN }}
           script: |
-            const tag = `v${process.env.VERSION}`;
-            const { owner, repo } = context.repo;
-            const existingTagMatchesTarget = (tagRef) => {
-              if (tagRef.data.object.sha === process.env.TARGET_COMMIT) return true;
-
-              core.setFailed(
-                `Tag ${tag} already exists at ${tagRef.data.object.sha}, expected ${process.env.TARGET_COMMIT}.`,
-              );
-              return false;
-            };
-
-            try {
-              const tagRef = await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
-
-              if (existingTagMatchesTarget(tagRef)) console.log(`Tag ${tag} already exists at the merge commit.`);
-              return;
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
-
-            try {
-              const result = await github.rest.git.createRef({
-                owner,
-                repo,
-                ref: `refs/tags/${tag}`,
-                sha: process.env.TARGET_COMMIT,
-              });
-              console.log(result.data);
-            } catch (error) {
-              if (error.status !== 422) throw error;
-
-              const tagRef = await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
-
-              if (existingTagMatchesTarget(tagRef)) console.log(`Tag ${tag} already exists at the merge commit.`);
-            }
+            const mainRef = await github.rest.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'heads/main',
+            });
+            const result = await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'refs/tags/v${{ steps.package-json.outputs.version }}',
+              sha: mainRef.data.object.sha,
+            });
+            console.log(result);
+          github-token: ${{ secrets.GH_TOKEN }}

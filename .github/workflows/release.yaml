@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - v*
 
 permissions:
   contents: write
@@ -11,112 +11,161 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-24.04
+    name: release
+
+    runs-on: ubuntu-24.04-arm
     environment: publishing
-    timeout-minutes: 15
+
+    env:
+      VITE_PRESERVE_MODULES: "false"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
+      - name: Checkout plugin
+        uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - name: Check if package version matches
+        run: test "${GITHUB_REF_NAME}" = "v$(yq -r .version package.json)"
+
+      - name: Setup node
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          registry-url: https://registry.npmjs.org
           package-manager-cache: false
+          registry-url: https://registry.npmjs.org
 
-      - name: Enable Corepack
+      - name: Upgrade npm
+        run: npm install -g npm@11
+
+      - name: Setup pnpm
         run: corepack enable
 
-      - name: Get pnpm cache path
-        id: pnpm-cache
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: Get pnpm cache directory
+        shell: bash
+        run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
 
-      - name: Restore pnpm cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - name: Use pnpm cache
+        uses: actions/cache@v6
         with:
-          path: ${{ steps.pnpm-cache.outputs.path }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          path: ${{ env.pnpm_cache_dir }}
+          key: ubuntu-24.04-arm-node-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-
+            ubuntu-24.04-arm-node-
 
-      - name: Validate tag version
-        id: version
+      - name: Install pnpm dependencies
+        id: install-pnpm
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+        continue-on-error: true
+
+      - name: Install pnpm dependencies (retry)
+        if: steps.install-pnpm.outcome == 'failure'
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+
+      - name: Build packages
+        id: build-packages
+        run: pnpm --color=always --stream build
+        continue-on-error: true
+
+      - name: Build packages (retry)
+        id: build-packages-2
+        if: steps.build-packages.outcome == 'failure'
+        run: pnpm --color=always --stream build
+        continue-on-error: true
+
+      - name: Build packages (retry 2)
+        if: steps.build-packages-2.outcome == 'failure'
+        run: pnpm --color=always --stream build
+
+      - name: Pack packages
+        run: pnpm --color=always --stream pack
+
+      - name: Publish npm packages
+        id: publish-npm
         run: |
-          set -eo pipefail
-          package_version="$(node -p "require('./package.json').version")"
-
-          if [[ "$GITHUB_REF_NAME" != "v$package_version" ]]; then
-            echo "Tag $GITHUB_REF_NAME does not match package version $package_version" >&2
-            exit 1
-          fi
-
-          if [[ "$package_version" == *-* ]]; then
-            echo "npm-tag=next" >> "$GITHUB_OUTPUT"
+          case "${GITHUB_REF_NAME}" in
+            *-*) dist_tag=next;;
+            *) dist_tag=latest;;
+          esac
+          if [[ -n ${NPM_TOKEN:-} ]]; then
+            NODE_AUTH_TOKEN="${NPM_TOKEN}" pnpm --color=always publish -r \
+              --no-git-checks \
+              --tag ${dist_tag}
           else
-            echo "npm-tag=latest" >> "$GITHUB_OUTPUT"
+            NPM_CONFIG_PROVENANCE=true pnpm --color=always publish -r \
+              --no-git-checks \
+              --tag ${dist_tag}
           fi
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        continue-on-error: true
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: Pack
+      - name: Publish npm packages (retry)
+        id: publish-npm-2
+        if: steps.publish-npm.outcome == 'failure'
         run: |
-          set -eo pipefail
-          mkdir -p dist
-          pnpm pack --pack-destination dist
-          packages=(dist/*.tgz)
-
-          if [[ ${#packages[@]} -ne 1 ]]; then
-            echo "Expected one package tarball, found ${#packages[@]}" >&2
-            exit 1
+          case "${GITHUB_REF_NAME}" in
+            *-*) dist_tag=next;;
+            *) dist_tag=latest;;
+          esac
+          if [[ -n ${NPM_TOKEN:-} ]]; then
+            NODE_AUTH_TOKEN="${NPM_TOKEN}" pnpm --color=always publish -r \
+              --no-git-checks \
+              --tag ${dist_tag}
+          else
+            NPM_CONFIG_PROVENANCE=true pnpm --color=always publish -r \
+              --no-git-checks \
+              --tag ${dist_tag}
           fi
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        continue-on-error: true
 
-          echo "PACKAGE_TGZ=${packages[0]}" >> "$GITHUB_ENV"
-
-      - name: Publish package
+      - name: Publish npm packages (retry 2)
+        if: steps.publish-npm-2.outcome == 'failure'
         run: |
-          set -eo pipefail
-          package_name="$(node -p "require('./package.json').name")"
-          package_version="$(node -p "require('./package.json').version")"
+          case "${GITHUB_REF_NAME}" in
+            *-*) dist_tag=next;;
+            *) dist_tag=latest;;
+          esac
+          if [[ -n ${NPM_TOKEN:-} ]]; then
+            NODE_AUTH_TOKEN="${NPM_TOKEN}" pnpm --color=always publish -r \
+              --no-git-checks \
+              --tag ${dist_tag}
+          else
+            NPM_CONFIG_PROVENANCE=true pnpm --color=always publish -r \
+              --no-git-checks \
+              --tag ${dist_tag}
+          fi
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-          publish_package() {
-            if [[ "$package_version" == *-* ]]; then
-              npm_tag=next
-            else
-              npm_tag=latest
-            fi
+      - name: Create SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          upload-release-assets: false
 
-            pnpm publish -r --no-git-checks --tag "$npm_tag" --provenance
-          }
-
-          for attempt in 1 2 3; do
-            if publish_package; then
-              exit 0
-            fi
-
-            published_version="$(npm view "$package_name@$package_version" version --registry=https://registry.npmjs.org 2>/dev/null || true)"
-            if [[ "$published_version" == "$package_version" ]]; then
-              echo "$package_name@$package_version is already published."
-              exit 0
-            fi
-
-            if [[ $attempt -lt 3 ]]; then
-              sleep "$((attempt * 10))"
-            fi
+      - name: Normalize SBOM filename
+        shell: bash
+        run: |
+          for f in *.tgz; do
+            mv sbom.spdx.json "${f%.tgz}-spdx.json"
           done
 
-          exit 1
+      - name: Make checksums
+        shell: bash
+        run: |
+          for f in *.tgz *-spdx.json; do
+            sha256sum "$f" | tee "$f.sha256"
+          done
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - name: Create release
+        uses: softprops/action-gh-release@v3
         with:
-          files: ${{ env.PACKAGE_TGZ }}
-          generate_release_notes: true
-          prerelease: ${{ steps.version.outputs.npm-tag == 'next' }}
+          fail_on_unmatched_files: true
+          files: |-
+            *.tgz
+            *.tgz.sha256
+            *-spdx.json
+            *-spdx.json.sha256
