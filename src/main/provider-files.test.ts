@@ -88,17 +88,15 @@ describe("provider workspaces", () => {
     expect(existsSync(legacyWorkdir)).toBe(false);
   });
 
-  it.each([
-    "../escape",
-    "dir/../file",
-    "bad\0path",
-    path.resolve(path.sep, "absolute"),
-  ])("rejects unsafe declared paths: %s", (relPath) => {
-    const userData = createRoot();
-    prepareProviderWorkspace(userData, "cluster-1", "opencode");
+  it.each(["../escape", "dir/../file", "bad\0path", path.resolve(path.sep, "absolute")])(
+    "rejects unsafe declared paths: %s",
+    (relPath) => {
+      const userData = createRoot();
+      prepareProviderWorkspace(userData, "cluster-1", "opencode");
 
-    expect(() => readProviderFile(userData, "cluster-1", "opencode", relPath)).toThrow(/Forbidden path/);
-  });
+      expect(() => readProviderFile(userData, "cluster-1", "opencode", relPath)).toThrow(/Forbidden path/);
+    },
+  );
 
   it("rejects writes to paths not declared by provider", () => {
     const userData = createRoot();
