@@ -68,7 +68,7 @@
     "@freelensapp/extensions": "^1.10.3",
     "@types/node": "~24.12.4",
     "@types/react": "^17.0.93",
-    "@vitejs/plugin-react": "^6.0.3",
+    "@vitejs/plugin-react": "^6.1.0",
     "cross-env": "^10.1.0",
     "electron-vite": "^5.0.0",
     "mobx": "6.13.7",
