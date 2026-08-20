@@ -1,28 +1,31 @@
-name: Automated npm version
+name: Automated trunk upgrade
 
 on:
-  workflow_dispatch:
-    inputs:
-      newversion:
-        description: New version (X.Y.Z | major | minor | patch | premajor | preminor | prepatch | prerelease)
-        required: true
-        default: prerelease
-  release:
+  issue_comment:
     types:
-      - released
+      - created
+  push:
+    branches:
+      - main
+    paths:
+      - .trunk/**
+  schedule:
+    - cron: 2 6 * * *
+  workflow_dispatch: {}
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  npm-version:
-    name: npm version
+  trunk-upgrade:
+    name: trunk upgrade
 
     runs-on: ubuntu-24.04-arm
     environment: automated
     timeout-minutes: 10
 
+    if: github.event_name != 'issue_comment' || (startsWith(github.event.issue.title, 'Automated trunk upgrade') && contains(github.event.comment.body, '/rerun'))
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -59,23 +62,15 @@ jobs:
         if: steps.install-pnpm.outcome == 'failure'
         run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
 
-      - name: Set version
+      - name: Set up Trunk
+        run: curl https://get.trunk.io -fsSL | bash -s -- -y
+
+      - name: Trunk upgrade
         run: |
-          set -eo pipefail
-          pnpm bump-version "$newversion" | tee .github/update.log
-          yq -r .version package.json > .github/version.log
-          sed -e 's/\x1b\[[0-9;]*m//g' .github/update.log > .github/pr_body.log
-        env:
-          newversion: ${{ github.event.inputs.newversion || 'prerelease' }}
-
-      - name: Update pnpm dependencies
-        id: update-pnpm
-        run: timeout 300 pnpm install --color=always --prefer-offline
-        continue-on-error: true
-
-      - name: Update pnpm dependencies (retry)
-        if: steps.update-pnpm.outcome == 'failure'
-        run: timeout 300 pnpm install --color=always --prefer-offline
+          set -o pipefail
+          trunk upgrade --yes-to-all --no-progress --ci --color | tee .github/update.log
+          sed -e '/Downloading Trunk/,/Unpacking Trunk... done/d' -e 's/\x1b\[[0-9;]*m//g' -e 's/^\(  \)\{0,1\}  /\1- /' .github/update.log > .github/pr_body.log
+          perl -0777 -ne 'print join ", ", map {s/://gr} map {s/^- //r} grep {/^(-|cli) /} split "\n"' .github/pr_body.log > .github/pr_title.log
 
       - name: Check for changes
         run: |
@@ -85,30 +80,37 @@ jobs:
             echo "changes=true" >> $GITHUB_ENV
           fi
 
+      - name: Trunk Check
+        if: env.changes == 'true'
+        uses: trunk-io/trunk-action@v1
+        with:
+          check-mode: all
+        continue-on-error: true
+
       - name: Commit and push to branch
         if: env.changes == 'true'
         uses: EndBug/add-and-commit@v10
         with:
           github_token: ${{ secrets.GH_TOKEN }}
           default_author: github_actions
-          message: Automated npm version ${{ github.event.inputs.newversion || 'prerelease' }}
-          new_branch: automated/npm-version
+          message: Automated trunk upgrade [skip ci]
+          new_branch: automated/trunk-upgrade
           fetch: false
-          push: origin automated/npm-version --set-upstream --force
+          push: origin automated/trunk-upgrade --set-upstream --force
 
       - name: Create pull request
         if: env.changes == 'true'
         run: |-
-          version=$(cat .github/version.log)
-          if [[ $(gh pr view automated/npm-version --json state --jq .state || true) != "OPEN" ]]; then
+          if [[ $(gh pr view automated/trunk-upgrade --json state --jq .state || true) != "OPEN" ]]; then
             gh pr create \
-              --head automated/npm-version \
-              --title "Automated npm version v${version}" \
+              --head automated/trunk-upgrade \
+              --title "Automated trunk upgrade $(cat .github/pr_title.log) [skip ci]" \
               --body-file .github/pr_body.log \
-              --label automated
+              --label automated \
+              --label trunk
           else
-            gh pr edit automated/npm-version \
-              --title "Automated npm version v${version}" \
+            gh pr edit automated/trunk-upgrade \
+              --title "Automated trunk upgrade $(cat .github/pr_title.log) [skip ci]" \
               --body-file .github/pr_body.log
           fi
         env:
@@ -116,6 +118,6 @@ jobs:
 
       - name: Close pull request
         if: env.changes == 'false'
-        run: gh pr list --head automated/npm-version --json number --jq '.[].number' | xargs -rn1 gh pr close --delete-branch
+        run: gh pr list --head automated/trunk-upgrade --json number --jq '.[].number' | xargs -rn1 gh pr close --delete-branch
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}

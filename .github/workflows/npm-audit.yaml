@@ -1,32 +1,32 @@
-name: Automated npm version
+name: Automated npm audit
 
 on:
-  workflow_dispatch:
-    inputs:
-      newversion:
-        description: New version (X.Y.Z | major | minor | patch | premajor | preminor | prepatch | prerelease)
-        required: true
-        default: prerelease
-  release:
+  issue_comment:
     types:
-      - released
+      - created
+  schedule:
+    - cron: 16 7 * * *
+  workflow_dispatch: {}
 
 permissions:
   contents: write
+  id-token: write
   pull-requests: write
 
 jobs:
-  npm-version:
-    name: npm version
+  npm-audit:
+    name: npm audit
 
     runs-on: ubuntu-24.04-arm
     environment: automated
     timeout-minutes: 10
 
+    if: github.event_name != 'issue_comment' || (startsWith(github.event.issue.title, 'Automated npm audit') && contains(github.event.comment.body, '/rerun'))
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           token: ${{ secrets.GH_TOKEN }}
 
       - name: Setup node
@@ -59,23 +59,13 @@ jobs:
         if: steps.install-pnpm.outcome == 'failure'
         run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
 
-      - name: Set version
+      - name: Run npm audit
         run: |
-          set -eo pipefail
-          pnpm bump-version "$newversion" | tee .github/update.log
-          yq -r .version package.json > .github/version.log
-          sed -e 's/\x1b\[[0-9;]*m//g' .github/update.log > .github/pr_body.log
-        env:
-          newversion: ${{ github.event.inputs.newversion || 'prerelease' }}
-
-      - name: Update pnpm dependencies
-        id: update-pnpm
-        run: timeout 300 pnpm install --color=always --prefer-offline
-        continue-on-error: true
-
-      - name: Update pnpm dependencies (retry)
-        if: steps.update-pnpm.outcome == 'failure'
-        run: timeout 300 pnpm install --color=always --prefer-offline
+          set -o pipefail
+          pnpm audit report 2>&1 | tee .github/report.log || true
+          pnpm audit fix 2>&1 | tee .github/fix.log || true
+          sed -e 's/\x1b\[[0-9;]*m//g' .github/report.log > .github/pr_body.log
+          sed -e 's/\x1b\[[0-9;]*m//g' .github/fix.log >> .github/pr_body.log
 
       - name: Check for changes
         run: |
@@ -91,24 +81,22 @@ jobs:
         with:
           github_token: ${{ secrets.GH_TOKEN }}
           default_author: github_actions
-          message: Automated npm version ${{ github.event.inputs.newversion || 'prerelease' }}
-          new_branch: automated/npm-version
-          fetch: false
-          push: origin automated/npm-version --set-upstream --force
+          message: Automated npm audit
+          new_branch: automated/npm-audit
+          push: origin automated/npm-audit --set-upstream --force
 
       - name: Create pull request
         if: env.changes == 'true'
         run: |-
-          version=$(cat .github/version.log)
-          if [[ $(gh pr view automated/npm-version --json state --jq .state || true) != "OPEN" ]]; then
+          if [[ $(gh pr view automated/npm-audit --json state --jq .state || true) != "OPEN" ]]; then
             gh pr create \
-              --head automated/npm-version \
-              --title "Automated npm version v${version}" \
+              --head automated/npm-audit \
+              --title "Automated npm audot" \
               --body-file .github/pr_body.log \
               --label automated
           else
-            gh pr edit automated/npm-version \
-              --title "Automated npm version v${version}" \
+            gh pr edit automated/npm-audit \
+              --title "Automated npm audot" \
               --body-file .github/pr_body.log
           fi
         env:
@@ -116,6 +104,6 @@ jobs:
 
       - name: Close pull request
         if: env.changes == 'false'
-        run: gh pr list --head automated/npm-version --json number --jq '.[].number' | xargs -rn1 gh pr close --delete-branch
+        run: gh pr list --head automated/npm-audit --json number --jq '.[].number' | xargs -rn1 gh pr close --delete-branch
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
