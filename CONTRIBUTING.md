@@ -70,7 +70,7 @@ Then `pnpm build` and reload Freelens (`Ctrl+R` / `Cmd+R`).
 > Freelens completely and reopen it**. The symptom of skipping this is a new
 > renderer invoking a channel the old main process never registered:
 >
-> ```
+> ```text
 > Error invoking remote method 'agentbridge-extension:<channel>':
 > Error: No handler registered for 'agentbridge-extension:<channel>'
 > ```

@@ -12,7 +12,7 @@ pieces and how to use them.
 ## What is installed
 
 | File | Purpose |
-|------|---------|
+| ------ | --------- |
 | `.github/workflows/claude.yaml` | On-demand assistant. Runs when a comment/issue/review contains `@claude`. |
 | `.github/workflows/claude-task.yaml` | Manual task runner via **Actions → Run workflow** (`workflow_dispatch`). |
 | `.claude/settings.json` | `PreToolUse` hook that blocks Claude from reading/writing secret files (`.env`, `*.pem`, `*.key`, etc.). |

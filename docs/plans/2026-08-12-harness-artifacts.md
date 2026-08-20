@@ -33,10 +33,10 @@ Copied verbatim from the spec and the repo's context files. Every task's require
 
 ## File Structure
 
-**Created**
+### Created
 
 | File | Responsibility |
-|---|---|
+| --- | --- |
 | `src/common/harness-artifacts.ts` | Types shared across processes (`HarnessArtifactKind`, `ArtifactSource`, `HarnessArtifact`, `HarnessArtifactGroup`, `HarnessInventoryResult`), the caps, and the pure `buildArtifactGroup` rollup derivation. |
 | `src/common/harness-artifacts.test.ts` | Rollup derivation tests. |
 | `src/main/read-frontmatter.ts` | Bounded head-read of a file + line-oriented YAML frontmatter reader. One responsibility, so its parsing edge cases are testable without a filesystem. |
@@ -49,10 +49,10 @@ Copied verbatim from the spec and the repo's context files. Every task's require
 | `src/renderer/harness-artifacts-section.test.tsx` | Direct-invocation tests of the two hook-free components. |
 | `docs/features/harness-artifacts.md` | Feature documentation, per the ARCHITECTURE.md convention. |
 
-**Modified**
+### Modified
 
 | File | Change |
-|---|---|
+| --- | --- |
 | `src/common/agentbridge-providers.ts:15-24, 26-115` | `artifactSources` on the interface and on all three providers. |
 | `src/common/agentbridge-providers.test.ts` | Extend the exact-metadata assertion; add root-safety validation. |
 | `src/main/provider-files.ts:19-25` | Export the existing `isInside` helper so the scanner reuses it instead of re-implementing the win32 case rule. |
@@ -294,7 +294,7 @@ git commit -m "feat: add shared harness artifact types and rollup derivation"
 Verified paths (from the provider docs, confirmed during brainstorming):
 
 | Provider | Skills roots | Agents roots |
-|---|---|---|
+| --- | --- | --- |
 | OpenCode | `.opencode/skills`, `.claude/skills`, `.agents/skills` | `.opencode/agent`, `.opencode/agents` |
 | Claude Code | `.claude/skills` | `.claude/agents` |
 | Copilot CLI | `.github/skills` | `.github/agents` |
@@ -2130,7 +2130,7 @@ Two additions the spec did not anticipate, both forced by existing tests:
 ## Spec coverage
 
 | Spec section | Task |
-|---|---|
+| --- | --- |
 | §4.1 Data model | 1 |
 | §4.2 Registry `artifactSources` | 2 |
 | §4.3 Scanner (containment, symlinks, caps, dedup, ordering, origin) | 3, 4 |

@@ -29,7 +29,7 @@ So the feature is an **inventory**: counts plus freshness, with names on demand.
 Banked during brainstorming; each one narrows the design.
 
 | # | Question | Decision |
-|---|---|---|
+| --- | --- | --- |
 | 1 | What problem does seeing them solve? | **Know what the agent knows** — counts + last-updated, not a file browser |
 | 2 | Workspace only, or workspace + `~/.claude`? | **Workspace only** |
 | 3 | Rollup, drill-down, or range? | **Rollup headline + expandable drill-down** |
@@ -150,7 +150,7 @@ survives in the shape for the next provider.
 `AgentBridgeProvider` gains `readonly artifactSources: readonly ArtifactSource[]`.
 
 | Provider | Skills roots | Agents roots |
-|---|---|---|
+| --- | --- | --- |
 | Claude Code | `.claude/skills` | `.claude/agents` |
 | OpenCode | `.opencode/skills`, `.claude/skills`, `.agents/skills` | `.opencode/agent`, `.opencode/agents` |
 | Copilot CLI | `.github/skills` | `.github/agents` |
@@ -241,7 +241,7 @@ pure logic separate from JSX, so the logic is testable without a DOM):
 `Renderer.Component.SubTitle` at `agentbridge-page.tsx:166-180` renders
 `● Claude Code v2.1.0`. The rollup extends that line with one chip per non-empty kind:
 
-```
+```text
 ● Claude Code v2.1.0 · 21 skills · 2 agents · updated 4m ago
 ```
 
@@ -285,7 +285,7 @@ in Phase 1.
 ### 4.7 Failure modes
 
 | Situation | Behaviour |
-|---|---|
+| --- | --- |
 | Workdir missing / not yet prepared | `ok`, all kinds `count: 0` |
 | Root directory missing (`ENOENT`) | Contributes nothing; not an error |
 | `SKILL.md` missing inside a skill directory | Directory ignored |
