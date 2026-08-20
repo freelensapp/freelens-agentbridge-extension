@@ -145,25 +145,6 @@ A PVC is stuck in Pending — figure out which StorageClass is the problem.
 Summarize the warning events from the last hour and group them by cause.
 ```
 
-### Video demos
-
-**Broken secret reference** — a pod fails with
-`CreateContainerConfigError`; the agent walks pods, deployments, and events,
-spots that the deployment references key `DB_PASS` while the secret defines
-`DB_PASSWORD`, fixes the manifest, and waits for the pod to come back
-healthy.
-
-<!-- markdownlint-disable-next-line MD034 - bare URL is required for the GitHub video embed -->
-https://github.com/user-attachments/assets/528e3f01-c9d1-4da3-a748-cc7a6bd80cb7
-
-**OOMKilled crash loop** — restart counts are climbing; the agent finds
-`OOMKilled` (exit code 137), identifies a 16Mi memory limit as the cause,
-bumps it to 256Mi, applies the corrected deployment, and verifies the pod
-stabilizes.
-
-<!-- markdownlint-disable-next-line MD034 - bare URL is required for the GitHub video embed -->
-https://github.com/user-attachments/assets/4843056a-f8d1-486e-a828-40965c92a1c7
-
 ## How it works
 
 Each cluster and provider pair gets a persistent workspace:
