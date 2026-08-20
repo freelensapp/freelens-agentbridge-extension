@@ -14,6 +14,8 @@ isolated, persistent workspace with sensible guardrails pre-configured, and
 you can tune the agent's instructions and permissions directly inside
 Freelens.
 
+![GitHub Copilot CLI session answering a cluster health report request](docs/images/agentbridge-session.jpg)
+
 ![AI CLI session in Freelens sidebar](docs/images/agentbridge-homepage.png)
 
 ## Why use it
