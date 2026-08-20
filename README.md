@@ -14,7 +14,7 @@ isolated, persistent workspace with sensible guardrails pre-configured, and
 you can tune the agent's instructions and permissions directly inside
 Freelens.
 
-<img src="docs/images/agentbridge-homepage.png" width="800" alt="AI CLI session in Freelens sidebar">
+![AI CLI session in Freelens sidebar](docs/images/agentbridge-homepage.png)
 
 ## Why use it
 
@@ -72,7 +72,7 @@ wrong environment. This extension removes all of that:
   file and every other file in the workspace stay untouched. The confirm
   dialog lists the exact paths before anything is removed.
 
-<img src="docs/images/opencode-permission-settings.png" width="800" alt="OpenCode permission editor">
+![OpenCode permission editor](docs/images/opencode-permission-settings.png)
 
 ## Quick start
 
@@ -142,18 +142,16 @@ spots that the deployment references key `DB_PASS` while the secret defines
 `DB_PASSWORD`, fixes the manifest, and waits for the pod to come back
 healthy.
 
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/528e3f01-c9d1-4da3-a748-cc7a6bd80cb7" width="80%" controls></video>
-</p>
+<!-- markdownlint-disable-next-line MD034 - bare URL is required for the GitHub video embed -->
+https://github.com/user-attachments/assets/528e3f01-c9d1-4da3-a748-cc7a6bd80cb7
 
 **OOMKilled crash loop** — restart counts are climbing; the agent finds
 `OOMKilled` (exit code 137), identifies a 16Mi memory limit as the cause,
 bumps it to 256Mi, applies the corrected deployment, and verifies the pod
 stabilizes.
 
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/4843056a-f8d1-486e-a828-40965c92a1c7" width="80%" controls></video>
-</p>
+<!-- markdownlint-disable-next-line MD034 - bare URL is required for the GitHub video embed -->
+https://github.com/user-attachments/assets/4843056a-f8d1-486e-a828-40965c92a1c7
 
 ## How it works
 

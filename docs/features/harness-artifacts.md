@@ -63,8 +63,8 @@ be run, the inventory describes what **exists** on disk — including everything
 
 ### Registry declarations
 
-| Provider           | Skills roots                                          | Agents roots                          |
-| ------------------ | ----------------------------------------------------- | ------------------------------------- |
+| Provider           | Skills roots                                           | Agents roots                          |
+| ------------------ | ------------------------------------------------------ | ------------------------------------- |
 | OpenCode           | `.opencode/skills`, `.claude/skills`, `.agents/skills` | `.opencode/agent`, `.opencode/agents` |
 | Claude Code        | `.claude/skills`                                       | `.claude/agents`                      |
 | GitHub Copilot CLI | `.github/skills`                                       | `.github/agents`                      |

@@ -56,7 +56,7 @@ it **merges/refreshes** what already exists instead of duplicating it.
 3. **Write one skill per namespace.**
    - Path: `.claude/skills/ns-map-<namespace>/SKILL.md`.
    - Front matter:
-     ```
+     ```yaml
      ---
      name: ns-map-<namespace>
      description: Map of the <namespace> namespace in <cluster> — workloads, services, config, storage, RBAC, risks. Load when working in this namespace.
@@ -73,7 +73,7 @@ it **merges/refreshes** what already exists instead of duplicating it.
 
 5. **Merge the short navigation map into the instructions file** (`CLAUDE.md`).
    - Replace (or insert) the block delimited exactly by:
-     ```
+     ```markdown
      <!-- BEGIN AGENTBRIDGE CLUSTER MAP -->
      <!-- END AGENTBRIDGE CLUSTER MAP -->
      ```
