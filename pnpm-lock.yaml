@@ -34,7 +34,7 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3(vite@8.1.3(@types/node@24.12.4))
       cross-env:
-        specifier: ^10.0.0
+        specifier: ^10.1.0
         version: 10.1.0
       electron-vite:
         specifier: ^5.0.0
