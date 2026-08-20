@@ -74,6 +74,12 @@ wrong environment. This extension removes all of that:
 
 ![OpenCode permission editor](docs/images/opencode-permission-settings.png)
 
+## Requirements
+
+- Freelens >= 1.8.0
+- macOS, Linux, or Windows (PowerShell)
+- At least one supported agent CLI on `PATH` (see [Quick start](#quick-start))
+
 ## Quick start
 
 ### 1. Install an agent CLI
@@ -88,7 +94,12 @@ The extension detects agents on `PATH`; it does not bundle or update them.
 
 ### 2. Install the extension
 
-Open Freelens, go to **Extensions**, and install the extension archive.
+Open Freelens and go to Extensions (`ctrl`+`shift`+`E` or `cmd`+`shift`+`E`),
+then search for and install `@freelensapp/agentbridge-extension`.
+
+Alternatively, open the following URL in the browser to install directly:
+
+[freelens://app/extensions/install/%40freelensapp%2Fagentbridge-extension](freelens://app/extensions/install/%40freelensapp%2Fagentbridge-extension)
 
 **After installing or upgrading, restart Freelens completely.** Freelens loads
 extension code into its main process once per app run, so a window reload picks
@@ -317,10 +328,11 @@ not grant or restrict Kubernetes access. **Kubernetes RBAC and your
 kubeconfig permissions remain the security boundary** — the agent can never
 do more against the cluster than the kubeconfig Freelens hands it allows.
 
-## Developing
+## Build from the source
 
-Dev setup, build, test, and debugging instructions live in
-[CONTRIBUTING.md](./CONTRIBUTING.md).
+`pnpm pack:dev` builds a prerelease `.tgz` you can install straight from the
+Freelens Extensions page. Full dev setup, build, test, and debugging
+instructions live in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 
