@@ -303,7 +303,7 @@ Under **Preferences → Extensions → Freelens Agent Bridge**:
   `code`). Set it to `codium`, `cursor`, or another VS Code fork. On macOS,
   run "Shell Command: Install 'code' command in PATH" from VS Code first.
 
-# Video demo
+## Video demo
 
 The agent fixes a missing secret that crashes the pod:
 <video src="https://github.com/user-attachments/assets/3e404238-8e21-4363-ad9f-783a9bd41790" controls width="600"></video>
