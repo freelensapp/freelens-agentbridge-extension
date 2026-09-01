@@ -303,6 +303,14 @@ Under **Preferences → Extensions → Freelens Agent Bridge**:
   `code`). Set it to `codium`, `cursor`, or another VS Code fork. On macOS,
   run "Shell Command: Install 'code' command in PATH" from VS Code first.
 
+# Video demo
+
+The agent fixes a missing secret that crashes the pod:
+https://github.com/user-attachments/assets/3e404238-8e21-4363-ad9f-783a9bd41790
+
+The agent fixes the deployment's memory limit too low that causes pod's restart:
+https://github.com/user-attachments/assets/12e1571c-4ac2-42cc-82fb-cd6d5d245213
+
 ## Security model
 
 CLI permission files are provider-native convenience guardrails: they
