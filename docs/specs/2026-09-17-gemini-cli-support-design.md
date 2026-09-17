@@ -30,8 +30,12 @@ missed. They are the real content of this document:
    mean "allow these, ask for the rest" (Claude Code / OpenCode semantics). It
    injects a narrowing **DENY** for every other shell command, so
    `kubectl apply` would become un-runnable even with user approval. The
-   equivalent of the other providers' permission file is a **workspace policy
-   TOML**, not a settings key.
+   equivalent of the other providers' permission file is a **policy TOML**, not
+   a settings key.
+3. **Workspace-tier policy auto-discovery is dead code in 0.60.0.** Dropping a
+   TOML into `<workdir>/.gemini/policies/` does nothing at all — it is never
+   read. The file has to be handed to the CLI explicitly with `--policy`, which
+   also promotes it from workspace tier to user tier. See §4.1.
 
 ## 1. How the extension abstracts providers today
 
@@ -64,17 +68,17 @@ whatever the two findings above force.
 | # | Extension feature | Works with Gemini CLI? | Notes |
 | --- | --- | --- | --- |
 | 1 | Provider selection, persisted per cluster | ✅ yes, free | Registry-driven (`localStorage`), no code. |
-| 2 | Availability check (`<exe> --version`) | ✅ yes, free | `gemini --version` → `0.60.0` on stdout, exit `0`. Matches `VERSION_RE = /\d+\.\d+\.\d+/` in `check-provider.ts:8`. |
+| 2 | Availability check (`<exe> --version`) | ✅ yes, free | `gemini --version` → bare `0.60.0` on stdout, exit `0`, no suffix text. Matches `VERSION_RE = /\d+\.\d+\.\d+/` in `check-provider.ts:8`. Notably `--version` short-circuits before the auth and trust checks, so the probe stays exit-0 even when a real session would fail with exit 41 (auth) or 55 (untrusted) — readiness in the UI does not imply a usable session. |
 | 3 | One-click session in a Freelens terminal | ✅ yes, **plus `--skip-trust`** | Bare `gemini` is interactive; CWD is the project root. See §3. |
 | 4 | `KUBECONFIG` / `PATH` inheritance | ✅ yes | The `run_shell_command` tool inherits the process environment. Caveat: `--sandbox` / `tools.sandbox` runs tools in a container and would **not** see the host kubeconfig — do not enable it. |
 | 5 | Isolated per-cluster workspace | ✅ yes, free | Gemini resolves `.gemini/` from CWD; no global state per project except a temp/session dir keyed by project path. |
 | 6 | Seeded instructions file | ✅ yes | `GEMINI.md`, discovered hierarchically from CWD upward plus `~/.gemini/GEMINI.md`. Renameable via `context.fileName`; leave it at the default. |
-| 7 | Seeded permission file | ✅ yes, **as a policy TOML** | `.gemini/policies/*.toml`. See §4 — this is finding #2. |
+| 7 | Seeded permission file | ✅ yes, **as a policy TOML passed via `--policy`** | `.gemini/policies/agentbridge.toml`. See §4 and §4.1 — findings #2 and #3. |
 | 8 | Seeded `/build-cluster-map` command | ✅ yes, native | `.gemini/commands/build-cluster-map.toml`. Native slash command, so the invocation hint stays `/build-cluster-map` (unlike Copilot). |
 | 9 | Command arguments (`$ARGUMENTS`) | ✅ yes | `{{args}}` placeholder. Also `!{shell}` and `@{file}` injection, which we do not need. |
 | 10 | Parallel subagent exploration | ✅ yes | Built-in `generalist` agent (`A general-purpose AI agent with access to all tools`) invoked via the `invoke_agent` tool; the shipped system prompt explicitly endorses parallel subagents for independent read-only tasks. So the cluster-map command keeps the Claude-style "one subagent per namespace, at most 5 in parallel" wording rather than the Copilot sequential wording. |
 | 11 | In-app Monaco editors | ⚠️ needs a small change | Two of the three files are TOML. `EditorDefinition.language` is `"json" \| "markdown"`, and **Monaco ships no TOML grammar** (verified: `monaco-editor/esm/vs/basic-languages/` has `ini` and `yaml`, no `toml`). See §5. |
-| 12 | Workspace artifact inventory (skills) | ✅ yes, free | `.gemini/skills/<name>/SKILL.md` with YAML frontmatter `name`/`description` — byte-for-byte the extension's existing `skill-dir` layout. Verified with `gemini skills list`. `.agents/skills/` is also scanned by Gemini and can be declared as a secondary root. |
+| 12 | Workspace artifact inventory (skills) | ✅ yes, free | `.gemini/skills/<name>/SKILL.md` with YAML frontmatter `name`/`description` — byte-for-byte the extension's existing `skill-dir` layout. Verified with `gemini skills list`. `.agents/skills/` is also scanned by Gemini (the cross-tool interop path, and the higher-precedence of the two) and can be declared as a secondary root — see the note in §7 on why `.gemini/skills` still goes first. |
 | 13 | Workspace artifact inventory (agents) | ✅ yes, free | `.gemini/agents/*.md`, markdown + YAML frontmatter, files starting with `_` ignored. Exactly the extension's `markdown` layout. |
 | 14 | Reveal workdir | ✅ yes, free | Path-only, provider-agnostic. |
 | 15 | Open in editor | ✅ yes, free | Path-only, provider-agnostic. |
@@ -116,14 +120,15 @@ demo [Enabled]
 
 In the shipped code, workspace settings are merged only when trusted
 (`mergeSettings(system, systemDefaults, user, workspaceSettings, isTrusted)`),
-the TOML command loader returns `[]` when untrusted, skill discovery returns
-early when untrusted, and the workspace policy directory is gated on
-`config.isTrustedFolder()`.
+the TOML command loader returns `[]` when untrusted, and skill discovery returns
+early when untrusted. (Workspace policy discovery is *also* trust-gated, but
+that path is dead for a second, independent reason — §4.1.)
 
-**Consequence:** without trust, the extension's seeded permission file, command
-and skills are *silently inert*. The user gets an unguarded agent while the UI
-claims "Safe by default". Trusting the folder is therefore the **safer** state
-here, not the riskier one — a point worth stating plainly in the README.
+**Consequence:** without trust, the extension's seeded command and skills are
+*silently inert*, and with `--policy` but no trust the CLI refuses to start at
+all (exit 55). The user gets either a broken session or an unguarded agent while
+the UI claims "Safe by default". Trusting the folder is therefore the **safer**
+state here, not the riskier one — a point worth stating plainly in the README.
 
 **Decision: `launchArgs: ["--skip-trust"]`.**
 
@@ -171,11 +176,11 @@ for your approval for everything else"). It also trips Gemini's own project
 security review: a workspace `settings.json` with a non-empty `tools.allowed`
 is reported as *"This project auto-approves certain tools"*.
 
-### `.gemini/policies/<name>.toml` — use this
+### `.gemini/policies/agentbridge.toml`, passed via `--policy` — use this
 
-Workspace policies are tier 3 TOML files. Allow-only rules raise the decision
-for the listed prefixes and leave everything else on the default
-`ask_user`, which is exactly the Claude/OpenCode model:
+Allow-only policy rules raise the decision for the listed prefixes and leave
+everything else on the shipped `ask_user` default, which is exactly the
+Claude/OpenCode model:
 
 ```toml
 # .gemini/policies/agentbridge.toml
@@ -201,12 +206,64 @@ each one, so `kubectl get pods; rm -rf /` does not ride in on the `kubectl get`
 allow, and an `allow` whose command contains redirection is downgraded to
 `ask_user` unless the rule sets `allowRedirection`.
 
-New or changed workspace policy files are auto-accepted in 0.60.0
-(`autoAcceptWorkspacePolicies = true`, hardcoded), so editing this file in the
-in-app Monaco editor does not produce a re-acceptance prompt on the next
-session. ⚠️ This is a hardcoded constant rather than a documented setting, so it
-could change; if it ever becomes a prompt, the symptom is a one-time
-confirmation after every edit and after first seeding.
+### 4.1 The file must be passed with `--policy` — workspace tier is disabled
+
+Seeding the TOML at `<workdir>/.gemini/policies/` and expecting Gemini to
+discover it **does not work in 0.60.0**. The policy resolver is dead-ended by a
+hardcoded constant:
+
+```js
+var autoAcceptWorkspacePolicies = true;
+var disableWorkspacePolicies = true;        // ← kill switch
+async function resolveWorkspacePolicyState(options) {
+  const { cwd, trustedFolder, interactive } = options;
+  let workspacePoliciesDir;
+  if (trustedFolder && !disableWorkspacePolicies) {   // ← never true
+```
+
+so `workspacePoliciesDir` is always `undefined` and the tier-3 branch of
+`getPolicyDirectories` is filtered out. Everything else about workspace
+policies — `Storage.getWorkspacePoliciesDir()`, the tier-3 label, the integrity
+manager, the auto-accept constant — is reachable code that is never reached.
+
+Verified by differential test. The *same* deliberately invalid file
+(`decision = "bogus"`) at `<workdir>/.gemini/policies/agentbridge.toml`:
+
+```console
+$ gemini -p "hi"                                        # no --policy
+(no policy diagnostics at all — the file is never opened)
+
+$ gemini --policy .gemini/policies/agentbridge.toml -p "hi"
+[USER] Policy file error in agentbridge.toml:
+  Schema validation failed
+Invalid policy rule (rule #1):
+  - Field "rule.0.decision": Invalid enum value. Expected 'allow' | 'deny' | 'ask_user', received 'bogus'
+```
+
+Fixing the file to a valid allow rule then loads clean, with no warning.
+
+**So: `--policy .gemini/policies/agentbridge.toml` joins `--skip-trust` in
+`launchArgs`.** The relative path resolves against the process CWD, which is
+already the workspace, so the flag is platform-independent and needs no
+interpolation. The editor path, the scaffold and the file's contents are
+unaffected — only `launchArgs` changes.
+
+Two consequences of routing through `--policy`:
+
+- The rules land in the **user tier (4.x)** rather than workspace tier (3.x), as
+  the `[USER]` prefix in the diagnostic above shows. Harmless here: these are
+  allow-only rules, and anything they do not match still falls through to the
+  tier-1 `ask_user`.
+- ⚠️ **It suppresses the user's own `~/.gemini/policies/`.** `getPolicyDirectories`
+  uses `policyPaths.length > 0 ? policyPaths : [Storage.getUserPoliciesDir()]`
+  — a replacement, not an addition. A user with personal global Gemini policies
+  will find them ignored inside AgentBridge sessions. That is defensible as
+  workspace isolation and matches how the extension already treats provider
+  config, but it is a real behaviour difference and belongs in the README.
+
+Because the file is no longer auto-discovered, the integrity/auto-accept
+machinery never runs either, so editing the permission file in the in-app Monaco
+editor cannot produce a re-acceptance prompt on the next session.
 
 ### Not `.gemini/settings.json` at all?
 
@@ -285,7 +342,11 @@ Gemini's TOML command schema is strict: `prompt` (required string) and
   // seeded policy, command and skills — so this flag is what makes the
   // guardrails effective, not a bypass of them. Session-scoped: it writes
   // nothing to ~/.gemini/trustedFolders.json.
-  launchArgs: ["--skip-trust"],
+  // --policy is required because workspace-tier policy auto-discovery is
+  // disabled by a hardcoded constant in 0.60.0 (§4.1): without it the seeded
+  // permission file is never opened. The relative path resolves against the
+  // process CWD, which the launcher has already set to the workspace.
+  launchArgs: ["--skip-trust", "--policy", ".gemini/policies/agentbridge.toml"],
   editors: [
     {
       path: "GEMINI.md",
@@ -311,6 +372,12 @@ Gemini's TOML command schema is strict: `prompt` (required string) and
     ".gemini/commands/build-cluster-map.toml",
   ],
   artifactSources: [
+    // .gemini/skills first, deliberately: `roots[0]` is also what
+    // scaffold-source.test.ts pins as the directory the cluster-map command
+    // writes into, and the command should write to the provider-native path
+    // like every other provider. Gemini's own resolution gives .agents/skills
+    // the higher precedence, but that only decides duplicate names, and the
+    // extension only ever writes into one of the two roots.
     { kind: "skill", roots: [".gemini/skills", ".agents/skills"], layout: "skill-dir" },
     { kind: "agent", roots: [".gemini/agents"], layout: "markdown" },
   ],
@@ -351,9 +418,50 @@ provider-keyword assertion in `src/package-metadata.test.ts:20`, which pins
 
 | Risk | Severity | Mitigation |
 | --- | --- | --- |
+| **Gemini CLI is reportedly being transitioned to "Antigravity CLI", with consumer/free tiers cut off** | **high — verify before building** | See §10. This is a product-lifecycle question, not a technical one, and it should be settled before the work is scheduled. |
+| The permission file depends on `--policy`, whose need comes from a hardcoded constant that could flip in either direction | medium | If `disableWorkspacePolicies` ever becomes `false`, the file gets discovered *and* passed explicitly; duplicate identical allow rules are harmless (highest priority wins). So the flag is safe to keep either way. |
+| `--policy` suppresses the user's own `~/.gemini/policies/` | medium | §4.1. Document in the README; it is workspace isolation, but it is a visible behaviour change for users with global policies. |
 | `--skip-trust` reads as "disable a security feature" in review | medium | Document §3 verbatim in the README: without it the seeded guardrails are inert, and it is not `--yolo`. |
 | Gemini CLI is pre-1.0 and moving fast; policy engine and settings v2 are recent | medium | Pin the verified version in the docs; the `--allowed-tools` flag is already deprecated in favour of the policy engine, so the TOML choice is the forward-compatible one. |
 | TOML highlighting via the `ini` grammar is approximate | low | Cosmetic; §5. |
-| Workspace policy auto-accept is a hardcoded constant | low | ⚠️ Symptom is a one-time prompt; note it in GOTCHAS if it ever appears. |
 | No per-command tool gating | low | §6; the policy file is still enforced. |
-| `tools.sandbox` / `--sandbox` would hide the host kubeconfig | low | Never set it; the scaffold does not. |
+| `tools.sandbox` / `--sandbox` would hide the host kubeconfig — and `--yolo` turns the sandbox **on** by default | low | Never pass `--yolo`; the launch args do not. Optionally set `GEMINI_SANDBOX=false` explicitly. |
+
+## 10. ⚠️ Product-lifecycle risk: the Antigravity transition
+
+This came out of a parallel docs sweep rather than the local binary, so treat the
+dates as **reported, not verified by me** — but one corroborating fact is solid.
+
+The claim: Google announced at I/O on 2026-05-19 that Gemini CLI is being
+retired in favour of **Antigravity CLI**, and that on **2026-06-18** Gemini CLI
+stopped serving Google AI Pro/Ultra and free Gemini Code Assist users.
+Reportedly unaffected: Gemini Code Assist Standard/Enterprise, paid Gemini API
+keys, and Vertex AI.
+
+What I can confirm directly ✅: version 0.60.0 ships a **built-in skill named
+`antigravity-support`**, described as *"Use when the user asks questions, seeks
+help, or requests instructions related to installing, setting up, or **migrating
+to Antigravity CLI**"*. A CLI does not ship a first-party migration-assistance
+skill for a replacement product by accident. Also confirmed: the npm package is
+still actively published (nightly builds as of 2026-09-17), so this is a
+transition, not an abandonment.
+
+Also reported: Antigravity CLI is a Go binary distributed from
+`antigravity.google/download`, **not on npm** — so it would not be a drop-in
+swap for this extension's PATH-probe model, and `@google/antigravity-cli` and
+similar names do not resolve on the registry.
+
+**Why this matters more than any technical finding here:** the extension's
+onboarding story is "install the CLI, sign in, pick it in Freelens". If
+signing in with a personal Google account no longer works, the realistic user
+needs a paid API key or an enterprise Code Assist licence, which is a materially
+worse first-run experience than the other three providers.
+
+**Recommendation:** before scheduling the implementation, confirm with a real
+account which auth paths still work. The engineering work in the plan is small
+and unaffected by the answer — but if consumer sign-in is genuinely gone, the
+README should say so up front, and adding **Antigravity CLI** as its own
+provider may be the better investment. Nothing in this design is wasted either
+way: the trust gate, the policy-TOML mechanism and the skills/agents layout are
+all inherited by Antigravity CLI's Gemini-CLI lineage. ⚠️ That last sentence is
+inference, not verified.

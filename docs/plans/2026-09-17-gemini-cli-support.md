@@ -35,6 +35,12 @@ Biome 2.5.
   Gemini state.
 - **Do not use `tools.allowed` in a workspace `settings.json`** — it hard-denies
   unlisted shell commands. See the spec, §4.
+- **The permission file only works because `--policy` points at it.** Workspace
+  policy auto-discovery is disabled by a hardcoded constant in 0.60.0 (spec
+  §4.1), so seeding the TOML without the launch arg is a no-op. Do not "tidy up"
+  that flag.
+- **Before starting, read spec §10** (the reported Antigravity transition and
+  consumer-tier cutoff) and confirm the provider is still worth shipping.
 - **Seeding copies files, not directories** (`provider-files.ts:155`), so every
   declared editor path must be a single file that exists in the scaffold.
 - **Biome:** 2-space indent, LF, 120 columns, double quotes, semicolons,
@@ -54,7 +60,7 @@ Biome 2.5.
 | File | Responsibility |
 | --- | --- |
 | `src/main/scaffolds/gemini/GEMINI.md` | Seeded cluster-agent instructions. Must satisfy the six regexes in `scaffold-source.test.ts:41`. |
-| `src/main/scaffolds/gemini/.gemini/policies/agentbridge.toml` | Workspace policy: allow read-only `kubectl`/`helm` prefixes, leave everything else on the shipped `ask_user` default. |
+| `src/main/scaffolds/gemini/.gemini/policies/agentbridge.toml` | Policy file (loaded via `--policy`): allow read-only `kubectl`/`helm` prefixes, leave everything else on the shipped `ask_user` default. |
 | `src/main/scaffolds/gemini/.gemini/commands/build-cluster-map.toml` | Native `/build-cluster-map` slash command (`description` + `prompt`). |
 
 ### Modified
@@ -118,9 +124,16 @@ review by hand here and confirm in Task 4.
       `helm list|status|get|history|show|search|version`).
       Add **no** `deny` rule and **no** catch-all: unlisted shell commands must
       fall through to Gemini's shipped `run_shell_command → ask_user` default.
-- [ ] Head the file with a comment explaining the tier model (workspace TOML is
-      tier 3; the shipped ask default is tier 1) and why `tools.allowed` in
-      `settings.json` is deliberately not used.
+- [ ] Head the file with a comment explaining that it is loaded via the
+      `--policy` launch arg (workspace-tier auto-discovery is dead — spec §4.1),
+      that it therefore lands in the user tier while unmatched commands stay on
+      the tier-1 `ask_user` default, and why `tools.allowed` in `settings.json`
+      is deliberately not used.
+- [ ] Verify the file loads clean: from the scaffold directory, run
+      `gemini --policy .gemini/policies/agentbridge.toml --list-sessions` and
+      confirm no `Policy file error` appears. Temporarily corrupting a
+      `decision` value should produce one — that is the check that the file is
+      actually being read rather than silently skipped.
 - [ ] Create `src/main/scaffolds/gemini/.gemini/commands/build-cluster-map.toml`
       by translating `src/main/scaffolds/claude/commands/build-cluster-map.md`:
   - [ ] `description = "..."` and `prompt = '''…'''` — a multi-line **literal**
@@ -143,13 +156,22 @@ review by hand here and confirm in Task 4.
 - [ ] Append the `gemini` entry to `agentBridgeProviders` exactly as given in
       the spec, §7: `executable: "gemini"`, `versionArgs: ["--version"]`,
       `docsUrl: "https://geminicli.com/docs/get-started/installation/"`,
-      `launchArgs: ["--skip-trust"]`, the three editors, the two `resetPaths`,
-      and `artifactSources` with skill roots
-      `[".gemini/skills", ".agents/skills"]` and agent root `.gemini/agents`.
-- [ ] Comment `launchArgs` with the finding: Gemini CLI refuses to run in an
-      untrusted directory and, worse, silently ignores the workspace policy,
-      command and skills until trusted — so the flag is what makes the seeded
-      guardrails effective. It is session-scoped and is not `--yolo`.
+      `launchArgs: ["--skip-trust", "--policy", ".gemini/policies/agentbridge.toml"]`,
+      the three editors, the two `resetPaths`, and `artifactSources` with skill
+      roots `[".gemini/skills", ".agents/skills"]` and agent root
+      `.gemini/agents`.
+- [ ] Comment both launch args with their findings: `--skip-trust` because
+      Gemini CLI refuses to run in an untrusted directory and silently ignores
+      the seeded command and skills until trusted (session-scoped, and not
+      `--yolo`); `--policy` because workspace-tier policy discovery is disabled
+      by a hardcoded constant, so the permission file is never opened without
+      it.
+- [ ] Keep `.gemini/skills` as `roots[0]`: that slot doubles as the directory
+      the cluster-map command writes into (asserted by
+      `scaffold-source.test.ts`), and the command should write to the
+      provider-native path. `.agents/skills` is the cross-tool interop path and
+      wins in Gemini's own precedence, but the extension only ever writes one of
+      the two.
 - [ ] Add a `src/common/agentbridge-providers.test.ts` case pinning the Gemini
       entry's shape, in the style of the existing provider cases.
 
@@ -193,11 +215,18 @@ Task 7.
         separately, against the Reset section only).
   - [ ] New `### Gemini CLI (.gemini/policies/agentbridge.toml)` subsection
         alongside the OpenCode and Claude ones: show the policy snippet, explain
-        allow-only + tier fallthrough, and state that `tools.allowed` is
-        deliberately avoided.
+        allow-only + tier fallthrough, state that `tools.allowed` is
+        deliberately avoided, and note that because the file is passed with
+        `--policy`, a user's own `~/.gemini/policies/` is **not** loaded inside
+        AgentBridge sessions.
   - [ ] A short, plain paragraph on folder trust: the extension launches with
         `--skip-trust`; this is not auto-approval (that is `--yolo`, never
         passed); without it Gemini ignores the seeded guardrails entirely.
+  - [ ] Requirements: note that Gemini CLI needs its own one-time auth setup
+        (`gemini` then pick an auth method, or `GEMINI_API_KEY`) outside
+        Freelens, and link spec §10 on the reported consumer-tier cutoff. The
+        version probe passes regardless of auth, so a "ready" badge does not
+        guarantee a working session.
 - [ ] `src/renderer/settings-page.tsx:154` — name Gemini CLI in the probe
       timeout help text.
 - [ ] `ARCHITECTURE.md` — update the overview line and the external-dependencies
@@ -210,8 +239,13 @@ Task 7.
     inert. Fix: launch with `--skip-trust`.
   - `tools.allowed` in a Gemini `settings.json` appends a narrowing DENY for the
     same tool at user-tier priority, so unlisted shell commands are hard-denied
-    rather than asked. Fix: express read-only allowances as workspace policy
-    TOML rules and let the tier-1 `ask_user` default handle the rest.
+    rather than asked. Fix: express read-only allowances as policy TOML rules and
+    let the tier-1 `ask_user` default handle the rest.
+  - Gemini CLI 0.60.0 never reads `<workdir>/.gemini/policies/` — a hardcoded
+    `disableWorkspacePolicies = true` dead-ends the tier-3 branch, silently and
+    with no diagnostic. Fix: pass the file explicitly with
+    `--policy <relative-path>`; corrupt a `decision` value to prove the file is
+    being read, since a skipped file and a valid file look identical.
 
 **Verify:** `pnpm test` (README tests green), `pnpm lint:check`, and markdown
 lint via `pnpm trunk:check` if available.
