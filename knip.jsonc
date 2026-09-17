@@ -2,6 +2,9 @@
   "$schema": "https://unpkg.com/knip@5/schema-jsonc.json",
 
   "entry": [
+    // analyzed as an entry instead of through the vite/electron-vite plugins,
+    // see the plugin note below
+    "electron.vite.config.js",
     "out/{main,renderer}/index.js!",
     "src/main/index.ts",
     "src/renderer/index.tsx",
@@ -30,9 +33,13 @@
   "typescript": {
     "config": ["tsconfig.json"]
   },
-  "vite": {
-    "config": ["electron.vite.config.js"]
-  },
+  // knip loads plugin configs through its own CJS transpile, which cannot call
+  // ESM-only @vitejs/plugin-react, so loading electron.vite.config.js fails and
+  // knip >= 6.35.1 exits with code 2. Both plugins must be disabled: the
+  // electron-vite plugin auto-detects the same config file on its own.
+  // https://knip.dev/reference/known-issues
+  "vite": false,
+  "electron-vite": false,
 
   "exclude": ["exports"]
 }
