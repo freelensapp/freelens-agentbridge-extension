@@ -75,6 +75,19 @@ Then `pnpm build` and reload Freelens (`Ctrl+R` / `Cmd+R`).
 > Error invoking remote method 'agentbridge-extension:<channel>':
 > Error: No handler registered for 'agentbridge-extension:<channel>'
 > ```
+>
+> Adding a provider to `src/common/agentbridge-providers.ts` produces the same
+> failure through a channel that *does* exist — the handler is there, its
+> registry is older than the id the renderer just handed it:
+>
+> ```text
+> Error invoking remote method 'agentbridge-extension:check-provider':
+> Error: Unsupported AI CLI provider: <id>
+> ```
+>
+> `src/renderer/stale-main-process.ts` rewrites both into the restart
+> instruction, so a user never sees either string; you will see it in the
+> console, and the remedy is the same quit-and-reopen.
 
 ## Debug
 

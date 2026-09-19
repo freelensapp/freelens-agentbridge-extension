@@ -4,6 +4,7 @@ import {
   type PrepareWorkspaceResult,
   type ProviderCheckResult,
 } from "../common/agentbridge-providers";
+import { describeStaleMainProcessError, FULL_RESTART_REMEDY } from "./stale-main-process";
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -60,6 +61,17 @@ export function saveSelectedProvider(
   }
 }
 
+// The page renders this as `${provider.name}: ${error}`, so the message must not
+// name the provider again. A renderer that offers a provider the running main
+// process has never heard of is the same stale-bundle failure as a missing
+// channel, and has the same single remedy.
+function describeLoadError(error: unknown): string {
+  return describeStaleMainProcessError(
+    error instanceof Error ? error.message : String(error),
+    `Unavailable until Freelens is fully restarted: this session's main process started before the extension was updated. ${FULL_RESTART_REMEDY}`,
+  );
+}
+
 export async function loadProvider(
   clusterId: string,
   providerId: AgentBridgeProviderId,
@@ -71,7 +83,7 @@ export async function loadProvider(
   try {
     check = (await invoke(`${channelPrefix}check-provider`, providerId)) as ProviderCheckResult;
   } catch (error) {
-    return isCurrent() ? { status: "error", error: error instanceof Error ? error.message : String(error) } : undefined;
+    return isCurrent() ? { status: "error", error: describeLoadError(error) } : undefined;
   }
 
   if (!isCurrent()) {
@@ -90,6 +102,6 @@ export async function loadProvider(
 
     return isCurrent() ? { status: "ready", version: check.version, workdir: workspace.workdir } : undefined;
   } catch (error) {
-    return isCurrent() ? { status: "error", error: error instanceof Error ? error.message : String(error) } : undefined;
+    return isCurrent() ? { status: "error", error: describeLoadError(error) } : undefined;
   }
 }
