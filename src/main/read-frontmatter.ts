@@ -21,10 +21,36 @@ const FIELD_PATTERN = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
 // closes it, and it does not occur in between.
 const QUOTED_PATTERN = /^"([^"]*)"$|^'([^']*)'$/;
 
+// A bare TOML key at the start of a line. Same "top level only" rule as
+// FIELD_PATTERN: an indented key belongs to some table this reader does not
+// model.
+const TOML_KEY_PATTERN = /^([A-Za-z][\w-]*)\s*=\s*(.*)$/;
+
+// A TOML table header (`[table]` or `[[array]]`). Everything after one is
+// scoped to that table, so the top-level scan must stop there. Leading
+// whitespace is allowed because TOML permits an indented header, and a header
+// this pattern failed to recognise would let the keys below it be read as
+// top-level ones.
+const TOML_TABLE_PATTERN = /^\s*\[/;
+
+// A single-line TOML string, with an optional trailing comment. Basic strings
+// are matched without backslashes on purpose: implementing TOML escapes would be
+// the only way to render `\n` or `\u00e9` correctly, and a reader that shows the
+// raw escape is exactly the "wrong value" this module refuses to produce.
+const TOML_STRING_PATTERN = /^"([^"\\]*)"(?:\s*#.*)?$|^'([^']*)'(?:\s*#.*)?$/;
+
+// A value that opens a multi-line string without closing it on the same line.
+// Its body can contain anything at all, including lines shaped exactly like a
+// top-level `name = "..."`, so the scan stops rather than reading into it.
+const TOML_MULTILINE_OPEN_PATTERN = /^("""|''')/;
+
 export interface Frontmatter {
   name?: string;
   description?: string;
 }
+
+// How an artifact file carries its `name` and `description`.
+export type MetadataFormat = "frontmatter" | "toml";
 
 // The file the caller already lstat-ed and containment-checked. `fs.Stats`
 // satisfies this structurally, so a scanner hands over the very stats it made
@@ -91,6 +117,57 @@ export function parseFrontmatter(head: string): Frontmatter {
   return frontmatter;
 }
 
+// Deliberately NOT a TOML parser either: the top-level `name` and `description`
+// of a Codex subagent file are single-line strings, and everything this reader
+// cannot read with certainty yields no value.
+//
+// Unlike frontmatter, TOML has no closing delimiter to prove the head window
+// captured a whole block, so completeness is decided per line: only a line the
+// window actually terminated can be trusted not to have been cut mid-value or
+// mid-UTF-8-sequence.
+export function parseTomlMetadata(head: string): Frontmatter {
+  const text = head.replace(/^﻿/, "");
+  const lines = text.split(/\r?\n/);
+
+  // The last element of a split is the text after the final newline. When the
+  // head does not end in one, that text is where HEAD_BYTES cut the file, not a
+  // line the file contains.
+  if (!/\n$/.test(text)) lines.pop();
+
+  const frontmatter: Frontmatter = {};
+
+  for (const line of lines) {
+    if (TOML_TABLE_PATTERN.test(line)) break;
+
+    const match = TOML_KEY_PATTERN.exec(line);
+
+    if (!match) continue;
+
+    const rawValue = match[2].trim();
+
+    if (TOML_MULTILINE_OPEN_PATTERN.test(rawValue)) break;
+
+    const valueMatch = TOML_STRING_PATTERN.exec(rawValue);
+
+    if (!valueMatch) continue;
+
+    const value = (valueMatch[1] ?? valueMatch[2]).trim();
+
+    if (!value) continue;
+    if (match[1] === "name" && frontmatter.name === undefined) frontmatter.name = value.slice(0, MAX_FIELD_LENGTH);
+    if (match[1] === "description" && frontmatter.description === undefined) {
+      frontmatter.description = value.slice(0, MAX_FIELD_LENGTH);
+    }
+  }
+
+  return frontmatter;
+}
+
+const METADATA_PARSERS: Record<MetadataFormat, (head: string) => Frontmatter> = {
+  frontmatter: parseFrontmatter,
+  toml: parseTomlMetadata,
+};
+
 // Opening by path is an INDEPENDENT resolution of a path the caller already
 // resolved and containment-checked, so the open itself has to be safe:
 //
@@ -110,7 +187,15 @@ const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants
 // `expected` is the identity of the file the caller decided to read — see
 // FileIdentity. Passing it is not optional: without it this function's open is a
 // third, unverified resolution of a path someone else vouched for.
-export function readFrontmatter(filePath: string, expected: FileIdentity): Frontmatter {
+//
+// `format` selects how the head is read. It defaults to markdown frontmatter
+// because that is what every artifact layout but Codex's `.codex/agents/*.toml`
+// uses; the open, the identity check and the head cap are shared by both.
+export function readFrontmatter(
+  filePath: string,
+  expected: FileIdentity,
+  format: MetadataFormat = "frontmatter",
+): Frontmatter {
   let head: string;
 
   try {
@@ -134,5 +219,5 @@ export function readFrontmatter(filePath: string, expected: FileIdentity): Front
     return {};
   }
 
-  return parseFrontmatter(head);
+  return METADATA_PARSERS[format](head);
 }

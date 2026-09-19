@@ -26,6 +26,7 @@ describe("package metadata", () => {
         "opencode",
         "claude-code",
         "github-copilot",
+        "openai-codex",
         "ai-agent",
         "agentbridge",
       ],

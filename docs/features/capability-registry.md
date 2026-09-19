@@ -52,6 +52,9 @@ const namespaceDocHint: CapabilityHint = {
     if (providerId === "copilot") {
       return { verb: "Ask Copilot", command: "Use the namespace-doc skill" };
     }
+    if (providerId === "codex") {
+      return { verb: "Run", command: "$namespace-doc" };
+    }
     return { verb: "Run", command: "/namespace-doc" };
   },
   // footnote is optional — only for capabilities also seeded as an editable file
@@ -66,8 +69,12 @@ Guidelines:
   the group, badge, and default icon.
 - Return `null` from `getInvocation` for any provider that does not support the
   capability — that is how the card self-hides.
-- Vary the invocation per provider when they differ (e.g. Copilot CLI invokes
-  skills by natural language, while Claude Code / OpenCode use slash commands).
+- Vary the invocation per provider when they differ, and treat the fall-through
+  as a claim you have to defend: only Claude Code and OpenCode have project-local
+  slash commands. Copilot CLI invokes skills by natural language, and Codex CLI
+  mentions them with `$<name>` — its `~/.codex/prompts/` are global-only and
+  deprecated, so a hint that falls through to `/namespace-doc` tells a Codex user
+  to type a command their CLI does not have.
 - No view changes are needed — the generic card handles rendering.
 
 ## Tests

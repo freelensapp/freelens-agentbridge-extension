@@ -3,7 +3,7 @@ import { closeSync, lstatSync, mkdtempSync, openSync, rmSync, symlinkSync, write
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { parseFrontmatter, readFrontmatter } from "./read-frontmatter";
+import { parseFrontmatter, parseTomlMetadata, readFrontmatter } from "./read-frontmatter";
 
 import type { FileIdentity } from "./read-frontmatter";
 
@@ -41,6 +41,116 @@ function readFile(contents: string) {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+// A Codex subagent file, shaped like the one in OpenAI's own docs.
+const CODEX_AGENT = [
+  'name = "reviewer"',
+  'description = "PR reviewer focused on correctness, security, and missing tests."',
+  'model = "gpt-5.6-terra"',
+  'sandbox_mode = "read-only"',
+  'developer_instructions = """',
+  "Review code like an owner.",
+  'name = "not-the-agent-name"',
+  '"""',
+  "",
+].join("\n");
+
+describe("parseTomlMetadata", () => {
+  it("extracts the top-level name and description of a Codex subagent", () => {
+    expect(parseTomlMetadata(CODEX_AGENT)).toEqual({
+      name: "reviewer",
+      description: "PR reviewer focused on correctness, security, and missing tests.",
+    });
+  });
+
+  it("accepts CRLF line endings and a leading BOM", () => {
+    expect(parseTomlMetadata('﻿name = "agent-one"\r\ndescription = "does things"\r\n')).toEqual({
+      name: "agent-one",
+      description: "does things",
+    });
+  });
+
+  it("reads literal strings and ignores trailing comments", () => {
+    expect(parseTomlMetadata("name = 'agent-one' # the name\ndescription = \"does things\"  # why\n")).toEqual({
+      name: "agent-one",
+      description: "does things",
+    });
+  });
+
+  // Everything after a table header belongs to that table, so a `name` inside
+  // `[skills.config]` is not the agent's name.
+  it("stops at the first table header, indented or not", () => {
+    expect(parseTomlMetadata('name = "outer"\n[[skills.config]]\ndescription = "inner"\n')).toEqual({ name: "outer" });
+    expect(parseTomlMetadata('name = "outer"\n  [agents.explorer]\ndescription = "inner"\n')).toEqual({
+      name: "outer",
+    });
+  });
+
+  // A multi-line string body can contain anything, including a line shaped
+  // exactly like a top-level key — see CODEX_AGENT's decoy.
+  it("stops at an unterminated multi-line string rather than reading into it", () => {
+    expect(parseTomlMetadata('developer_instructions = """\nname = "decoy"\n"""\n')).toEqual({});
+  });
+
+  it("ignores indented keys, comments and non-string values", () => {
+    expect(parseTomlMetadata('  name = "indented"\n# name = "commented"\nname = 12\ndescription = true\n')).toEqual({});
+  });
+
+  it("keeps the first occurrence of each key", () => {
+    expect(parseTomlMetadata('name = "first"\nname = "second"\n')).toEqual({ name: "first" });
+  });
+
+  // TOML has no closing delimiter to prove the head window captured a whole
+  // block, so an unterminated final line is where HEAD_BYTES cut the file — it
+  // may be missing the rest of its value or half a UTF-8 sequence.
+  it("drops a final line the head window did not terminate", () => {
+    expect(parseTomlMetadata('name = "kept"\ndescription = "truncated here')).toEqual({ name: "kept" });
+    expect(parseTomlMetadata('name = "kept"\ndescription = "whole"\n')).toEqual({
+      name: "kept",
+      description: "whole",
+    });
+  });
+
+  // Escapes are the one place a "close enough" reader would show the user a
+  // wrong value (`a\nb` rendered literally), so basic strings carrying one yield
+  // nothing instead.
+  it("yields nothing for a value it cannot render exactly", () => {
+    expect(parseTomlMetadata('name = "a\\nb"\n')).toEqual({});
+    expect(parseTomlMetadata('name = ""\n')).toEqual({});
+  });
+
+  it("does not read markdown frontmatter", () => {
+    expect(parseTomlMetadata("---\nname: markdown-agent\n---\n")).toEqual({});
+  });
+});
+
+describe("readFrontmatter with the toml format", () => {
+  it("reads a .toml artifact and ignores the markdown reader", () => {
+    const file = path.join(createRoot(), "reviewer.toml");
+    writeFileSync(file, CODEX_AGENT, "utf8");
+
+    expect(readFrontmatter(file, identityOf(file), "toml")).toEqual({
+      name: "reviewer",
+      description: "PR reviewer focused on correctness, security, and missing tests.",
+    });
+    expect(readFrontmatter(file, identityOf(file))).toEqual({});
+  });
+
+  it("applies the same identity check as the markdown format", () => {
+    const file = path.join(createRoot(), "reviewer.toml");
+    writeFileSync(file, CODEX_AGENT, "utf8");
+
+    expect(readFrontmatter(file, { dev: 1, ino: 1 }, "toml")).toEqual({});
+  });
+
+  // The head cap is shared, so a key pushed past it is simply not there.
+  it("never reads past the head window", () => {
+    const file = path.join(createRoot(), "reviewer.toml");
+    writeFileSync(file, `${"# padding\n".repeat(HEAD_BYTES)}name = "too-late"\n`, "utf8");
+
+    expect(readFrontmatter(file, identityOf(file), "toml")).toEqual({});
+  });
 });
 
 describe("parseFrontmatter", () => {

@@ -4,6 +4,7 @@ import { observer } from "mobx-react";
 import * as monacoEditor from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { useEffect, useRef, useState } from "react";
+import { monacoLanguageFor } from "./editor-language";
 import { createSaveLifecycle } from "./save-lifecycle";
 import { resolveHostMonacoTheme } from "./section-theme";
 
@@ -129,7 +130,7 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
       <div style={{ border: "1px solid var(--borderColor)", height: "360px", resize: "vertical", overflow: "hidden" }}>
         {loaded ? (
           <Monaco
-            language={editor.language}
+            language={monacoLanguageFor(editor.language)}
             value={content}
             theme={resolveHostMonacoTheme()}
             onChange={onChange}

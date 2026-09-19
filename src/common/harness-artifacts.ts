@@ -11,9 +11,15 @@
 export type HarnessArtifactKind = "skill" | "agent";
 
 // Directory layout of one artifact root.
-//   "skill-dir" -> <root>/<name>/SKILL.md   (skills, all three providers)
-//   "markdown"  -> <root>/<name>.md         (custom agents, all three providers)
-export type ArtifactLayout = "skill-dir" | "markdown";
+//   "skill-dir"  -> <root>/<name>/SKILL.md  (skills, every provider)
+//   "markdown"   -> <root>/<name>.md        (custom agents, every provider but Codex)
+//   "toml-file"  -> <root>/<name>.toml      (Codex subagents, `.codex/agents/`)
+//
+// "toml-file" exists because Codex is the one provider whose custom agents are
+// not markdown-with-frontmatter: a Codex subagent is a standalone TOML file
+// whose `name` and `description` are top-level TOML keys. Scanning it with the
+// "markdown" layout would match nothing and report 0 agents forever.
+export type ArtifactLayout = "skill-dir" | "markdown" | "toml-file";
 
 export interface ArtifactSource {
   readonly kind: HarnessArtifactKind;
