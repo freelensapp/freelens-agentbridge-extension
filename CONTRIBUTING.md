@@ -6,8 +6,9 @@
 - pnpm 10
 - Freelens >= 1.8.0
 - One or more supported providers on `PATH`: [OpenCode](https://opencode.ai/docs/),
-  [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup), or
-  [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli)
+  [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup),
+  [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli),
+  or [OpenAI Codex CLI](https://developers.openai.com/codex/cli/)
 
 ## Setup
 

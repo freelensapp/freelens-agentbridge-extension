@@ -73,8 +73,13 @@ const CLUSTER_MAP_DESCRIPTION =
 
 // The bundled cluster-map command. Claude Code and OpenCode expose it as a
 // native slash command; Copilot CLI invokes it as a named skill via natural
-// language. It is seeded per provider and also editable via the "Command"
-// editor below the capabilities rail.
+// language, and Codex mentions a skill with `$<name>`. It is seeded per provider
+// and also editable via the "Command" editor below the capabilities rail.
+//
+// The default is the slash command, so every branch here is a provider that does
+// NOT have project-local slash commands. Getting this wrong is not cosmetic: the
+// card is the only place the invocation is written down, so a provider falling
+// through to the default is told to type a command its CLI does not have.
 const clusterMapHint: CapabilityHint = {
   id: "cluster-map",
   kind: "command",
@@ -85,6 +90,13 @@ const clusterMapHint: CapabilityHint = {
   getInvocation(providerId: string): CapabilityInvocation | null {
     if (providerId === "copilot") {
       return { verb: "Ask Copilot", command: "Use the build-cluster-map skill" };
+    }
+
+    // Codex mentions a skill with `$<name>` (or picks it from `/skills`);
+    // `~/.codex/prompts/` is global-only and deprecated, so there is no
+    // `/build-cluster-map` to offer.
+    if (providerId === "codex") {
+      return { verb: "Run", command: "$build-cluster-map" };
     }
 
     return { verb: "Run", command: "/build-cluster-map" };

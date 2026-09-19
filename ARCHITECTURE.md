@@ -2,7 +2,7 @@
 
 ## Overview
 
-- Freelens extension that opens per-cluster sessions for OpenCode, Claude Code, or GitHub Copilot CLI.
+- Freelens extension that opens per-cluster sessions for OpenCode, Claude Code, GitHub Copilot CLI, or OpenAI Codex CLI.
 - Follows Freelens' two-process Electron model: renderer owns UI and terminal orchestration; main process owns filesystem, child-process, settings, and shell operations.
 - Uses local files only. No server, database, direct Kubernetes client, or provider API integration.
 
@@ -26,8 +26,8 @@
   - Renderer entry point; registers cluster page, sidebar menu, and app preferences.
 - `src/renderer/agentbridge-page.tsx`
   - Page state coordinator for active cluster, provider selection, readiness, editing, reset, and launch actions.
-- `src/renderer/provider-file-editor.tsx`
-  - Monaco-based declared-file editor with debounced IPC saves.
+- `src/renderer/provider-file-editor.tsx`, `editor-language.ts`
+  - Monaco-based declared-file editor with debounced IPC saves, and the map from a declared file's syntax to a language id the bundled Monaco registers.
 - `src/renderer/launch-session.ts`, `renderer-launch.ts`, `get-launch-command.ts`
   - Testable terminal launch logic, Freelens terminal adapter, and platform-specific shell commands.
 - `src/renderer/capability-hints.ts`, `capabilities-section.tsx`
@@ -64,7 +64,7 @@
 ## Key Abstractions
 
 - `AgentBridgeProvider`: registry entry defining executable, probe/launch arguments, docs, editable files, and reset scope.
-- `EditorDefinition`: declared provider file contract containing path, title, syntax, role, and optional scaffold source.
+- `EditorDefinition`: declared provider file contract containing path, title, syntax, role, and optional scaffold source. `language` is a syntax name, not a Monaco language id; the renderer maps it.
 - `ProviderCheckResult` / `ProviderLoadResult`: readiness state passed from process probe through renderer UI.
 - `ExtensionSettings`: normalized probe timeout and external editor command/URI scheme.
 - `LaunchSessionDeps`: small adapter boundary between framework-independent launch timing and Freelens terminal APIs.
@@ -79,7 +79,7 @@
 - Electron: IPC, application paths, filesystem reveal, and external URI handling.
 - React 17, MobX, and MobX React: renderer UI and host-observed state; injected by Freelens at runtime.
 - Monaco Editor and `@monaco-editor/react`: only bundled runtime UI dependencies.
-- OpenCode, Claude Code, and GitHub Copilot CLI: optional user-installed executables discovered on `PATH`; extension does not bundle them.
+- OpenCode, Claude Code, GitHub Copilot CLI, and OpenAI Codex CLI: optional user-installed executables discovered on `PATH`; extension does not bundle them.
 - Node.js `>=22`: filesystem, hashing, paths, and child-process APIs.
 - Kubernetes access: indirect through `KUBECONFIG` inherited by Freelens terminals; Kubernetes RBAC remains authorization boundary.
 

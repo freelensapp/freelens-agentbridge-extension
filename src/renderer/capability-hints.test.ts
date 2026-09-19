@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { agentBridgeProviders } from "../common/agentbridge-providers";
 import {
   applicableCapabilityHints,
   CAPABILITY_KIND_ORDER,
@@ -28,6 +29,26 @@ describe("cluster-map capability hint", () => {
       verb: "Ask Copilot",
       command: "Use the build-cluster-map skill",
     });
+  });
+
+  // Codex has no project-local slash commands — `~/.codex/prompts/` is
+  // global-only and deprecated — so it mentions the seeded skill with `$<name>`.
+  // Falling through to the default would print a command Codex does not have.
+  it("shows the skill mention for Codex", () => {
+    expect(clusterMapHint().getInvocation("codex")).toEqual({
+      verb: "Run",
+      command: "$build-cluster-map",
+    });
+  });
+
+  it("offers a slash command only to the providers that have project-local ones", () => {
+    const hint = clusterMapHint();
+
+    for (const providerId of agentBridgeProviders.map(({ id }) => id)) {
+      const slash = hint.getInvocation(providerId)?.command.startsWith("/") ?? false;
+
+      expect(slash, `${providerId}`).toBe(providerId === "claude" || providerId === "opencode");
+    }
   });
 
   it("describes the produced artifacts", () => {

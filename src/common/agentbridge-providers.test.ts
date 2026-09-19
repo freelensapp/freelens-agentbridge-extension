@@ -3,7 +3,7 @@ import { agentBridgeProviders, getAgentBridgeProvider } from "./agentbridge-prov
 
 describe("agentBridgeProviders", () => {
   it("lists products in intended order", () => {
-    expect(agentBridgeProviders.map(({ id }) => id)).toEqual(["opencode", "claude", "copilot"]);
+    expect(agentBridgeProviders.map(({ id }) => id)).toEqual(["opencode", "claude", "copilot", "codex"]);
   });
 
   it("has unique stable IDs", () => {
@@ -114,7 +114,77 @@ describe("agentBridgeProviders", () => {
           { kind: "agent", roots: [".github/agents"], layout: "markdown" },
         ],
       },
+      {
+        id: "codex",
+        name: "OpenAI Codex CLI",
+        executable: "codex",
+        versionArgs: ["--version"],
+        docsUrl: "https://developers.openai.com/codex/cli/",
+        launchArgs: [
+          "--sandbox",
+          "workspace-write",
+          "--ask-for-approval",
+          "on-request",
+          "-c",
+          "sandbox_workspace_write.network_access=true",
+        ],
+        editors: [
+          {
+            path: "AGENTS.md",
+            title: "Instructions (AGENTS.md)",
+            language: "markdown",
+            role: "instructions",
+          },
+          {
+            path: ".codex/config.toml",
+            title: "Settings (.codex/config.toml)",
+            language: "toml",
+            role: "settings",
+          },
+          {
+            path: ".agents/skills/build-cluster-map/SKILL.md",
+            title: "Skill (build-cluster-map)",
+            language: "markdown",
+            role: "command",
+          },
+        ],
+        resetPaths: [".codex/config.toml", ".agents/skills/build-cluster-map/SKILL.md"],
+        artifactSources: [
+          { kind: "skill", roots: [".agents/skills"], layout: "skill-dir" },
+          { kind: "agent", roots: [".codex/agents"], layout: "toml-file" },
+        ],
+      },
     ]);
+  });
+
+  // Codex is the only provider that needs launch flags, and both of them are
+  // load-bearing: without `--sandbox workspace-write` a non-git workspace starts
+  // read-only, and without network access in that sandbox kubectl cannot reach
+  // the API server at all. Neither can be seeded into `.codex/config.toml`
+  // instead, because Codex ignores a project's `.codex/` layer until the user
+  // trusts the directory — which has not happened yet on the first launch.
+  it("launches Codex with a writable, networked sandbox that still asks before acting", () => {
+    const launchArgs: readonly string[] = getAgentBridgeProvider("codex").launchArgs;
+
+    expect(launchArgs).toContain("--sandbox");
+    expect(launchArgs[launchArgs.indexOf("--sandbox") + 1]).toBe("workspace-write");
+    expect(launchArgs[launchArgs.indexOf("--ask-for-approval") + 1]).toBe("on-request");
+    expect(launchArgs).toContain("sandbox_workspace_write.network_access=true");
+
+    // A flag carrying a space would be split by the shell command builder, which
+    // joins argv on " ".
+    for (const arg of launchArgs) expect(arg).not.toMatch(/\s/);
+
+    // `never` would run mutations unattended, and the retired `untrusted` /
+    // `on-failure` values can stop Codex from starting at all.
+    expect(launchArgs).not.toContain("never");
+    expect(launchArgs.join(" ")).not.toMatch(/--yolo|dangerously|full-auto|untrusted|on-failure/);
+  });
+
+  it("gives only Codex launch arguments", () => {
+    for (const provider of agentBridgeProviders) {
+      if (provider.id !== "codex") expect(provider.launchArgs).toEqual([]);
+    }
   });
 
   it("uses safe relative editor and reset paths", () => {
@@ -144,7 +214,7 @@ describe("agentBridgeProviders", () => {
       for (const source of provider.artifactSources) {
         expect(source.roots.length).toBeGreaterThan(0);
         expect(new Set(source.roots)).toHaveLength(source.roots.length);
-        expect(["skill-dir", "markdown"]).toContain(source.layout);
+        expect(["skill-dir", "markdown", "toml-file"]).toContain(source.layout);
 
         for (const root of source.roots) {
           expect(root).not.toContain("\0");
@@ -170,11 +240,23 @@ describe("agentBridgeProviders", () => {
     }
   });
 
-  it("uses the skill-dir layout for skills and the markdown layout for agents", () => {
+  // Skills are a directory standard (`<name>/SKILL.md`) every provider follows;
+  // custom agents are one file each, and the file format is the provider's own —
+  // markdown with frontmatter everywhere except Codex, whose subagents are TOML.
+  it("uses the skill-dir layout for skills and a flat-file layout for agents", () => {
     for (const provider of agentBridgeProviders) {
       for (const source of provider.artifactSources) {
-        expect(source.layout).toBe(source.kind === "skill" ? "skill-dir" : "markdown");
+        if (source.kind === "skill") expect(source.layout).toBe("skill-dir");
+        else expect(["markdown", "toml-file"]).toContain(source.layout);
       }
+    }
+  });
+
+  it("scans Codex subagents as TOML and everyone else's as markdown", () => {
+    for (const provider of agentBridgeProviders) {
+      const agents = provider.artifactSources.find(({ kind }) => kind === "agent");
+
+      expect(agents?.layout).toBe(provider.id === "codex" ? "toml-file" : "markdown");
     }
   });
 

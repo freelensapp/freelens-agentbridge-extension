@@ -89,7 +89,10 @@ describe("provider scaffolds", () => {
   });
 
   it("caps parallel exploration at 5 subagents for providers that support them", () => {
-    for (const providerId of ["opencode", "claude"] as const) {
+    // Codex is in this list because its subagents are enabled by default and it
+    // delegates when project or skill instructions ask it to; Copilot CLI has no
+    // parallel subagents, so its scaffold says "sequentially" instead.
+    for (const providerId of ["opencode", "claude", "codex"] as const) {
       const provider = agentBridgeProviders.find((candidate) => candidate.id === providerId);
       const command = provider?.editors.find((editor) => editor.role === "command");
       const sourceRel = (command as { source?: string; path: string }).source ?? (command as { path: string }).path;
@@ -130,5 +133,53 @@ describe("provider scaffolds", () => {
     );
 
     expect(config).toEqual({});
+  });
+
+  describe("Codex settings", () => {
+    const config = readFileSync(path.join(resolveProviderScaffold("codex"), ".codex/config.toml"), "utf8");
+
+    // These three lines have to be active, not commented out: they are the
+    // guardrails a user who has trusted the workspace then edits by hand, and
+    // the values the launch flags mirror. `network_access` in particular is the
+    // difference between a working cluster session and a kubectl that cannot
+    // resolve the API server.
+    it("seeds an asking, workspace-scoped, networked sandbox", () => {
+      expect(config).toMatch(/^approval_policy = "on-request"$/m);
+      expect(config).toMatch(/^sandbox_mode = "workspace-write"$/m);
+      expect(config).toMatch(/^\[sandbox_workspace_write\]$/m);
+      expect(config).toMatch(/^network_access = true$/m);
+    });
+
+    it("never seeds an unsandboxed or unattended policy", () => {
+      expect(config).not.toMatch(/^\s*sandbox_mode = "danger-full-access"/m);
+      expect(config).not.toMatch(/^\s*approval_policy = "never"/m);
+      // Retired and deprecated values: `untrusted` can stop Codex from starting.
+      expect(config).not.toMatch(/"(untrusted|on-failure)"/);
+    });
+
+    // A writable root is an absolute path on the user's machine, which a bundled
+    // scaffold cannot know — an active `writable_roots` here would either widen
+    // the sandbox to some path this workspace does not own or fail to parse.
+    it("leaves writable_roots to the user", () => {
+      expect(config).not.toMatch(/^writable_roots/m);
+      expect(config).toMatch(/#\s*writable_roots = \[/);
+    });
+
+    it("explains that the file is inert until the folder is trusted", () => {
+      expect(config).toMatch(/trust/i);
+    });
+  });
+
+  // Codex reads project config, skills and subagents from `.codex/` and
+  // `.agents/`, and keeps both read-only inside a writable workspace. The
+  // scaffolds have to say so, because a silently blocked write reads as the
+  // agent refusing to work.
+  it("tells the Codex session that .agents is read-only inside the sandbox", () => {
+    const scaffold = resolveProviderScaffold("codex");
+    const skill = readFileSync(path.join(scaffold, ".agents/skills/build-cluster-map/SKILL.md"), "utf8");
+
+    expect(skill).toMatch(/read-only/i);
+    expect(skill).toMatch(/\.agents/);
+    expect(skill).toMatch(/approval|approve/i);
   });
 });

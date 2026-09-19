@@ -6,8 +6,9 @@ Bring an AI coding agent into every Kubernetes cluster you manage — without
 leaving Freelens.
 
 Pick [OpenCode](https://opencode.ai/docs/),
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup), or
-[GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli)
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup),
+[GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli),
+or [OpenAI Codex CLI](https://developers.openai.com/codex/cli/)
 per cluster, click one button, and the agent opens in a docked terminal tab
 with `KUBECONFIG` already pointed at the active cluster. Each cluster gets an
 isolated, persistent workspace with sensible guardrails pre-configured, and
@@ -40,8 +41,9 @@ wrong environment. This extension removes all of that:
 
 ## Features
 
-- **Three providers** — OpenCode, Claude Code, and GitHub Copilot CLI.
-  Selection persists per cluster and can be changed at any time.
+- **Four providers** — OpenCode, Claude Code, GitHub Copilot CLI, and
+  OpenAI Codex CLI. Selection persists per cluster and can be changed at any
+  time.
 - **One-click sessions** — launches the agent in a Freelens terminal tab,
   in the cluster's workspace, with `KUBECONFIG` and `PATH` wired up. Works
   on macOS, Linux, and Windows (PowerShell).
@@ -52,11 +54,12 @@ wrong environment. This extension removes all of that:
   provider-native scaffold files into the workspace: instructions, a
   permission file that allows read-only `kubectl`/`helm` and asks for
   everything else, and a `/build-cluster-map` command (a skill on Copilot
-  CLI). Only missing files are written, so your edits are never overwritten.
+  CLI and Codex). Only missing files are written, so your edits are never
+  overwritten.
 - **In-app editors** — edit each provider's instruction, permission and
   command files in a Monaco editor inside Freelens, with debounced
-  autosave, JSON and Markdown highlighting, and an auto/dark/light theme
-  toggle.
+  autosave, JSON, TOML and Markdown highlighting, and an auto/dark/light
+  theme toggle.
 - **Workspace artifacts** — see how many skills and custom agents the
   cluster's workspace holds and when each last changed, with a drill-down
   list, without leaving the page or opening the directory.
@@ -91,6 +94,7 @@ Install at least one of:
 - [OpenCode](https://opencode.ai/docs/) — `opencode`
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup) — `claude`
 - [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) — `copilot`
+- [OpenAI Codex CLI](https://developers.openai.com/codex/cli/) — `codex`
 
 The extension detects agents on `PATH`; it does not bundle or update them.
 
@@ -168,6 +172,7 @@ files:
 | OpenCode           | `AGENTS.md`                       | `.opencode/opencode.json`       | `.opencode/command/build-cluster-map.md`    |
 | Claude Code        | `CLAUDE.md`                       | `.claude/settings.json`         | `.claude/commands/build-cluster-map.md`     |
 | GitHub Copilot CLI | `.github/copilot-instructions.md` | `.github/copilot/settings.json` | `.github/skills/build-cluster-map/SKILL.md` |
+| OpenAI Codex CLI   | `AGENTS.md`                       | `.codex/config.toml`            | `.agents/skills/build-cluster-map/SKILL.md` |
 
 Seeding only ever creates files that are absent — an existing file is left
 exactly as you last edited it.
@@ -178,9 +183,25 @@ built-in terminal infrastructure — changes into the workspace, and starts
 the CLI. The agent picks up its instruction and permission files exactly as
 it would in any project directory.
 
+Codex CLI is the one provider started with arguments, because two of its
+defaults would otherwise break a cluster session before its config file is
+ever read (Codex ignores a project's `.codex/` layer until you trust the
+folder, which it asks about on first launch):
+
+```sh
+codex --sandbox workspace-write --ask-for-approval on-request \
+      -c sandbox_workspace_write.network_access=true
+```
+
+Command-line flags outrank every config layer, so the session works on the
+first launch: the agent may write in its own workspace, `kubectl` can reach
+the API server — Codex's `workspace-write` sandbox blocks the network by
+default — and every command the sandbox does not already permit is still
+shown to you first.
+
 **Reset** removes and re-seeds the two managed files of the selected
 provider — the permission/settings file **and** the `/build-cluster-map`
-command (a skill on Copilot CLI):
+command (a skill on Copilot CLI and Codex CLI):
 
 - **OpenCode** — `.opencode/opencode.json` and
   `.opencode/command/build-cluster-map.md`
@@ -188,6 +209,8 @@ command (a skill on Copilot CLI):
   `.claude/commands/build-cluster-map.md`
 - **GitHub Copilot CLI** — `.github/copilot/settings.json` and
   `.github/skills/build-cluster-map/SKILL.md`
+- **OpenAI Codex CLI** — `.codex/config.toml` and
+  `.agents/skills/build-cluster-map/SKILL.md`
 
 Both files are deleted and copied back from the bundled scaffold, so any
 change you made to them is discarded. The instructions file, workspace
@@ -291,6 +314,39 @@ once or for the rest of the session. Session-level configuration lives in
 the CLI itself via the `/settings` slash command. See the
 [Copilot CLI docs](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-copilot-cli)
 for details.
+
+### OpenAI Codex CLI (`.codex/config.toml` and `AGENTS.md`)
+
+Codex reads `AGENTS.md` from the workspace and takes its policy from TOML:
+
+```toml
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = ["/path/to/this/workspace/.agents"]
+```
+
+Two Codex-specific things are worth knowing:
+
+- **Trust.** Codex loads a project's `.codex/` layer only after you trust
+  the folder, and it asks the first time a session opens. Until you answer,
+  this file has no effect — which is why the extension passes the sandbox,
+  approval and network settings as launch flags as well.
+- **Read-only paths.** Codex keeps `.agents/`, `.codex/` and `.git/`
+  read-only even inside a writable workspace. `build-cluster-map` writes
+  its per-namespace skills under `.agents/skills/`, so Codex asks for
+  approval before each one. Add this workspace's own `.agents` directory to
+  `writable_roots` (an absolute path — **Reveal workdir** gives it to you)
+  to let them through without prompting.
+
+Codex has no project-local slash commands, so the cluster map ships as a
+skill: mention it with `$build-cluster-map`, or pick it from `/skills`.
+Custom subagents go in `.codex/agents/*.toml` and are counted in the
+workspace artifacts panel. See the
+[Codex configuration docs](https://developers.openai.com/codex/config/) for
+the full key reference.
 
 ### Extension preferences
 

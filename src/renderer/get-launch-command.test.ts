@@ -23,10 +23,24 @@ describe("getLaunchCommand", () => {
       for (const platform of posixPlatforms) {
         expect(getLaunchCommand(workdir, provider.id, platform)).toBe(
           'cd "/tmp/\\$USER/\\`touch\\`/\\$(echo pwn)/\\"quote\\"/slash\\\\dir" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" ' +
-            provider.executable,
+            [provider.executable, ...provider.launchArgs].join(" "),
         );
       }
     }
+  });
+
+  // Spelled out rather than derived from the registry: these flags are the only
+  // thing standing between a Codex session and a read-only, network-less sandbox
+  // in which kubectl cannot reach the cluster, and a joined-from-the-registry
+  // assertion would follow them wherever they drifted.
+  it("starts Codex with a writable, networked sandbox on POSIX and on Windows", () => {
+    const codexFlags =
+      "codex --sandbox workspace-write --ask-for-approval on-request -c sandbox_workspace_write.network_access=true";
+
+    expect(getLaunchCommand("/tmp/session", "codex", "linux")).toBe(
+      `cd "/tmp/session" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" ${codexFlags}`,
+    );
+    expect(getLaunchCommand("C:\\sessions\\prod", "codex", "win32").endsWith(codexFlags)).toBe(true);
   });
 
   it("keeps Windows PowerShell workspace paths literal", () => {

@@ -14,6 +14,7 @@ import type {
   HarnessArtifactGroup,
   HarnessInventoryResult,
 } from "../common/harness-artifacts";
+import type { MetadataFormat } from "./read-frontmatter";
 
 // Read-only inventory of what a provider workspace currently contains.
 //
@@ -62,13 +63,27 @@ function resolveRootDir(workdir: string, root: string): string | undefined {
   return isInside(workdir, realRootDir) ? realRootDir : undefined;
 }
 
+// The file extension a flat-file layout accepts, and the metadata format its
+// files carry. Keyed by layout so a new flat layout is one entry, not a branch.
+const FLAT_LAYOUTS: Record<"markdown" | "toml-file", { extension: string; format: MetadataFormat }> = {
+  markdown: { extension: ".md", format: "frontmatter" },
+  "toml-file": { extension: ".toml", format: "toml" },
+};
+
 // A directory entry contributes at most one artifact file, decided by layout.
 function artifactFileFor(source: ArtifactSource, rootDir: string, entry: Dirent): string | undefined {
   if (source.layout === "skill-dir") {
     return entry.isDirectory() ? path.join(rootDir, entry.name, "SKILL.md") : undefined;
   }
 
-  return entry.isFile() && entry.name.toLowerCase().endsWith(".md") ? path.join(rootDir, entry.name) : undefined;
+  const { extension } = FLAT_LAYOUTS[source.layout];
+
+  return entry.isFile() && entry.name.toLowerCase().endsWith(extension) ? path.join(rootDir, entry.name) : undefined;
+}
+
+function metadataFormatFor(source: ArtifactSource): MetadataFormat {
+  // A SKILL.md is markdown whatever provider wrote it.
+  return source.layout === "skill-dir" ? "frontmatter" : FLAT_LAYOUTS[source.layout].format;
 }
 
 // List at most `budget` entries of a directory, and report whether it held more.
@@ -123,9 +138,12 @@ function listBoundedEntries(rootDir: string, budget: number): { entries: Dirent[
 function fallbackNameFor(source: ArtifactSource, entryName: string): string {
   if (source.layout === "skill-dir") return entryName;
 
-  // A file named exactly ".md" strips down to nothing, and an artifact row with
-  // no label at all is worse than one labelled with its file name.
-  return entryName.replace(/\.md$/i, "") || entryName;
+  // A file named exactly ".md" (or ".toml") strips down to nothing, and an
+  // artifact row with no label at all is worse than one labelled with its file
+  // name.
+  const { extension } = FLAT_LAYOUTS[source.layout];
+
+  return entryName.slice(0, -extension.length) || entryName;
 }
 
 function scanSource(workdir: string, source: ArtifactSource, seededPaths: ReadonlySet<string>): HarnessArtifactGroup {
@@ -230,7 +248,7 @@ function scanSource(workdir: string, source: ArtifactSource, seededPaths: Readon
       // `stats` travels with the path: readFrontmatter opens by name, which is
       // an independent third resolution, and only the identity we already
       // lstat-ed and containment-checked may be read.
-      const frontmatter = readFrontmatter(realFile, stats);
+      const frontmatter = readFrontmatter(realFile, stats, metadataFormatFor(source));
       const name = frontmatter.name ?? fallbackNameFor(source, entry.name);
 
       // First root that declares a name wins, which is what makes a multi-root

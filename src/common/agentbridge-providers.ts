@@ -5,7 +5,10 @@ export type EditorRole = "instructions" | "permissions" | "settings" | "command"
 export interface EditorDefinition {
   readonly path: string;
   readonly title: string;
-  readonly language: "json" | "markdown";
+  // Syntax of the declared file, not a Monaco language id: Monaco 0.52.2 ships
+  // no TOML grammar, so the renderer maps these to the closest one it has (see
+  // src/renderer/editor-language.ts).
+  readonly language: "json" | "markdown" | "toml";
   readonly role: EditorRole;
   // Optional scaffold-relative source path when the bundled source file lives at
   // a different location than the seeded target `path`. Used for the Claude Code
@@ -128,6 +131,62 @@ export const agentBridgeProviders = [
     artifactSources: [
       { kind: "skill", roots: [".github/skills"], layout: "skill-dir" },
       { kind: "agent", roots: [".github/agents"], layout: "markdown" },
+    ],
+  },
+  {
+    id: "codex",
+    name: "OpenAI Codex CLI",
+    executable: "codex",
+    versionArgs: ["--version"],
+    docsUrl: "https://developers.openai.com/codex/cli/",
+    // The only provider that needs launch flags, for two reasons that both come
+    // down to "the seeded config file cannot be relied on at launch":
+    //
+    //   - Codex loads a project's `.codex/` layer only once the user has trusted
+    //     the directory, and it asks for that on first launch. Every guardrail
+    //     seeded into `.codex/config.toml` is therefore inert until then.
+    //   - Its `workspace-write` sandbox sets `network_access = false` by
+    //     default, and a `kubectl` that cannot reach the API server makes a
+    //     cluster session pointless.
+    //
+    // CLI flags outrank every config layer and need no trust decision, so the
+    // two settings a session cannot work without are passed here. Approvals stay
+    // `on-request`, which is what keeps mutations in front of the user.
+    launchArgs: [
+      "--sandbox",
+      "workspace-write",
+      "--ask-for-approval",
+      "on-request",
+      "-c",
+      "sandbox_workspace_write.network_access=true",
+    ],
+    editors: [
+      {
+        path: "AGENTS.md",
+        title: "Instructions (AGENTS.md)",
+        language: "markdown",
+        role: "instructions",
+      },
+      {
+        path: ".codex/config.toml",
+        title: "Settings (.codex/config.toml)",
+        language: "toml",
+        role: "settings",
+      },
+      // Codex has no project-local slash commands — `~/.codex/prompts/` is
+      // global-only and deprecated in favour of skills — so the cluster-map
+      // capability ships as a skill, as it does on Copilot CLI.
+      {
+        path: ".agents/skills/build-cluster-map/SKILL.md",
+        title: "Skill (build-cluster-map)",
+        language: "markdown",
+        role: "command",
+      },
+    ],
+    resetPaths: [".codex/config.toml", ".agents/skills/build-cluster-map/SKILL.md"],
+    artifactSources: [
+      { kind: "skill", roots: [".agents/skills"], layout: "skill-dir" },
+      { kind: "agent", roots: [".codex/agents"], layout: "toml-file" },
     ],
   },
 ] as const satisfies readonly AgentBridgeProvider[];

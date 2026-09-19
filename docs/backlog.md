@@ -35,10 +35,17 @@ high-leverage items below close that gap.
 
 ## 4. Provider coverage & configuration
 
-- **4a. More providers** — registry additions are cheap: Gemini CLI, Codex CLI,
-  Cursor CLI, Aider, Amazon Q.
+- **4a. More providers** — remaining candidates: Gemini CLI, Cursor CLI, Aider,
+  Amazon Q. Registry additions are usually cheap, but "cheap" is not a given:
+  Codex CLI (done) also needed a `toml` editor language, a `toml-file` artifact
+  layout, a capability-hint branch and the first non-empty `launchArgs`, because
+  it is configured in TOML, has no project-local slash commands, and defaults to
+  a sandbox with no network. Budget a day per provider that is not a Claude
+  Code / OpenCode lookalike.
 - **4b. Model + extra-args per provider** — expose `launchArgs`/model selection
-  in the UI/settings instead of hardcoded empty arrays.
+  in the UI/settings. Codex is now the one provider with non-empty `launchArgs`,
+  and they are hardcoded; a user who wants `--model` or a different sandbox has
+  to edit `.codex/config.toml` and trust the folder first.
 - **4c. Custom tools scaffolding** — templates for provider-native custom tools.
   (existing: *development of custom tools*)
 

@@ -146,6 +146,16 @@ function writeAgent(workdir: string, root: string, name: string, frontmatter = `
   return file;
 }
 
+// A Codex subagent: a standalone TOML file whose name and description are
+// top-level keys, not markdown frontmatter.
+function writeTomlAgent(workdir: string, root: string, name: string, body = `name = "${name}"`): string {
+  const dir = path.join(workdir, ...root.split("/"));
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${name}.toml`);
+  writeFileSync(file, `${body}\ndeveloper_instructions = """\nbody for ${name}\n"""\n`, "utf8");
+  return file;
+}
+
 function setMtime(file: string, seconds: number): void {
   utimesSync(file, seconds, seconds);
 }
@@ -304,6 +314,60 @@ describe("listProviderArtifacts", () => {
     writeSkill(workdir, ".github/skills", "ns-map-default");
 
     const group = groupFor(listProviderArtifacts(userData, "cluster-1", "copilot"), "skill");
+    const origins = Object.fromEntries(group.artifacts.map(({ name, origin }) => [name, origin]));
+
+    expect(origins["build-cluster-map"]).toBe("seeded");
+    expect(origins["ns-map-default"]).toBe("generated");
+  });
+
+  // Codex is the only provider whose custom agents are not markdown. Scanning
+  // `.codex/agents/` with the markdown layout matched nothing, so the Agents
+  // group reported an authoritative 0 for a workspace full of subagents.
+  it("reads Codex subagents from their TOML keys", () => {
+    const { userData, workdir } = createWorkspace("codex");
+    writeTomlAgent(workdir, ".codex/agents", "reviewer", 'name = "reviewer"\ndescription = "Reviews changes."');
+
+    const group = groupFor(listProviderArtifacts(userData, "cluster-1", "codex"), "agent");
+
+    expect(group.count).toBe(1);
+    expect(group.artifacts[0]).toMatchObject({
+      kind: "agent",
+      name: "reviewer",
+      description: "Reviews changes.",
+      path: ".codex/agents/reviewer.toml",
+      origin: "generated",
+    });
+  });
+
+  it("falls back to the Codex subagent's file name when its TOML has no name", () => {
+    const { userData, workdir } = createWorkspace("codex");
+    writeTomlAgent(workdir, ".codex/agents", "unnamed", 'model = "gpt-5.6-terra"');
+
+    expect(groupFor(listProviderArtifacts(userData, "cluster-1", "codex"), "agent").artifacts[0].name).toBe("unnamed");
+  });
+
+  it("ignores non-TOML files in the Codex agents root", () => {
+    const { userData, workdir } = createWorkspace("codex");
+    writeAgent(workdir, ".codex/agents", "markdown-agent");
+    writeFileSync(path.join(workdir, ".codex/agents/notes.txt"), "not an agent", "utf8");
+
+    expect(groupFor(listProviderArtifacts(userData, "cluster-1", "codex"), "agent").count).toBe(0);
+  });
+
+  // The other providers' agents stay markdown; a shared reader would have
+  // silently started accepting TOML everywhere.
+  it("still ignores TOML files in a markdown agents root", () => {
+    const { userData, workdir } = createWorkspace("claude");
+    writeTomlAgent(workdir, ".claude/agents", "reviewer");
+
+    expect(groupFor(listProviderArtifacts(userData, "cluster-1", "claude"), "agent").count).toBe(0);
+  });
+
+  it("scans Codex skills from the .agents/skills root", () => {
+    const { userData, workdir } = createWorkspace("codex");
+    writeSkill(workdir, ".agents/skills", "ns-map-default");
+
+    const group = groupFor(listProviderArtifacts(userData, "cluster-1", "codex"), "skill");
     const origins = Object.fromEntries(group.artifacts.map(({ name, origin }) => [name, origin]));
 
     expect(origins["build-cluster-map"]).toBe("seeded");

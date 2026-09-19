@@ -34,8 +34,11 @@ be run, the inventory describes what **exists** on disk — including everything
 - **`src/common/agentbridge-providers.ts`** — each provider declares
   `artifactSources`: per kind, a list of workspace-relative roots (highest
   precedence first) and a layout (`skill-dir` for `<root>/<name>/SKILL.md`,
-  `markdown` for `<root>/<name>.md`). This is the only place per-provider artifact
-  paths exist; the scanner contains zero provider knowledge.
+  `markdown` for `<root>/<name>.md`, `toml-file` for `<root>/<name>.toml`). This
+  is the only place per-provider artifact paths exist; the scanner contains zero
+  provider knowledge. The layout also decides how the file's metadata is read:
+  `skill-dir` and `markdown` are markdown frontmatter, `toml-file` is top-level
+  TOML keys.
 - **`src/main/harness-artifacts.ts`** — `listProviderArtifacts(userData,
   clusterId, providerId)` walks exactly those roots under
   `resolveVerifiedWorkdir(...)`, one directory level per root, and returns
@@ -68,26 +71,36 @@ be run, the inventory describes what **exists** on disk — including everything
 | OpenCode           | `.opencode/skills`, `.claude/skills`, `.agents/skills` | `.opencode/agent`, `.opencode/agents` |
 | Claude Code        | `.claude/skills`                                       | `.claude/agents`                      |
 | GitHub Copilot CLI | `.github/skills`                                       | `.github/agents`                      |
+| OpenAI Codex CLI   | `.agents/skills`                                       | `.codex/agents` (`toml-file`)         |
 
 A kind with several roots dedups by artifact **name**, first root wins — that is
 what makes OpenCode's three skill roots (and both spellings of its agent
 directory) safe to declare.
+
+Codex is the only provider whose agents root uses `toml-file`: a Codex subagent
+is a standalone TOML file (`name`, `description`, `developer_instructions`), not
+markdown with frontmatter. Scanning `.codex/agents` with the `markdown` layout
+would match no file and report an authoritative `0` for a workspace full of
+subagents.
 
 ### What a scan produces
 
 Per artifact: `kind`, `name`, optional `description`, workspace-relative `path`
 (forward slashes on every platform), `mtimeMs`, and `origin`.
 
-- `name` comes from the frontmatter `name` field, falling back to the directory
-  name (`skill-dir`) or the file name without its `.md` suffix (`markdown`). A
-  file named exactly `.md` keeps its full entry name, since an empty label
-  renders an empty row. Like `description`, it is capped at 200 characters.
+- `name` comes from the file's own `name` field — frontmatter for `skill-dir` and
+  `markdown`, a top-level TOML key for `toml-file` — falling back to the directory
+  name (`skill-dir`) or the file name without its extension (`markdown`,
+  `toml-file`). A file named exactly `.md` or `.toml` keeps its full entry name,
+  since an empty label renders an empty row. Like `description`, it is capped at
+  200 characters.
 - `mtimeMs` is the artifact file's own `lstat` mtime, never its symlink target's.
 - `origin` is `"seeded"` when the artifact's workspace-relative path is one the
   provider registry declares as an editor, `"generated"` otherwise. In practice
-  only Copilot CLI's `.github/skills/build-cluster-map/SKILL.md` lands inside a
-  scanned root; OpenCode's and Claude Code's seeded command files live outside
-  their artifact roots, so everything they report is `"generated"`.
+  only Copilot CLI's `.github/skills/build-cluster-map/SKILL.md` and Codex CLI's
+  `.agents/skills/build-cluster-map/SKILL.md` land inside a scanned root;
+  OpenCode's and Claude Code's seeded command files live outside their artifact
+  roots, so everything they report is `"generated"`.
 - Artifacts are ordered **oldest-first** (ties broken by name), so a stale
   straggler is the first row a user sees without sorting anything.
 
@@ -194,7 +207,7 @@ loosening of them:
 ## Frontmatter reading
 
 `read-frontmatter.ts` is deliberately **not** a YAML parser, and must not grow
-into one. All three providers write single-line scalar `name:` and `description:`
+into one. Every provider writes single-line scalar `name:` and `description:`
 fields; a line-oriented reader that degrades to "no value" is both sufficient and
 impossible to turn into a parsing exploit.
 
@@ -222,6 +235,31 @@ impossible to turn into a parsing exploit.
 - `readFrontmatter` never throws: an unreadable artifact — missing, a directory,
   a symlink, a FIFO, or no longer the file the caller checked — is still counted,
   just without metadata.
+
+### TOML metadata (`toml-file`)
+
+`parseTomlMetadata` is the same idea for Codex subagents, and is just as
+deliberately **not** a TOML parser. It shares the open, the identity check and
+the 4096-byte window; only the head parsing differs, selected by
+`readFrontmatter(filePath, expected, "toml")`.
+
+- Only top-level bare `key = value` lines are read, and the scan **stops at the
+  first table header** (`[table]` / `[[array]]`) — a `name` inside
+  `[skills.config]` is not the agent's name.
+- It also **stops at a multi-line string** (`"""` / `'''`) it cannot see closed
+  on the same line. A Codex subagent's `developer_instructions` is exactly that,
+  and its body can contain a line shaped precisely like a top-level
+  `name = "..."`.
+- Only quoted single-line strings yield a value. A basic string containing a
+  backslash yields nothing rather than rendering `a\nb` literally — implementing
+  TOML escapes is the one way this reader could show a user a *wrong* value.
+  Trailing `#` comments after a closed string are ignored.
+- **A final line the head window did not terminate is dropped.** Frontmatter
+  proves its own completeness with a closing `---`; TOML has no such delimiter,
+  so an unterminated last line is where the 4096-byte cap fell, possibly through
+  the middle of a value or a UTF-8 sequence.
+- CRLF and a leading BOM are handled as they are for frontmatter, and the same
+  first-key-wins, empty-value-ignored and 200-character rules apply.
 
 ## UI
 
@@ -295,9 +333,18 @@ artifactSources: [
 ```
 
 Roots must be workspace-relative, must not contain `..`, and are listed
-highest-precedence first. No scanner, IPC or UI change is needed. Note that
+highest-precedence first. No scanner, IPC or UI change is needed **as long as one
+of the three existing layouts fits**. Note that
 `src/common/agentbridge-providers.test.ts` asserts the entire registry with
 `toEqual`, so that expected literal has to be updated in the same change.
+
+A provider whose artifacts are neither `<name>/SKILL.md`, `<name>.md` nor
+`<name>.toml` needs a fourth layout: add it to `ArtifactLayout`, give it an
+extension and a metadata format in `FLAT_LAYOUTS`
+(`src/main/harness-artifacts.ts`) or a branch in `artifactFileFor`, and add its
+reader to `METADATA_PARSERS` (`src/main/read-frontmatter.ts`). That reader must
+degrade to `{}` on anything it cannot read with certainty; see the TOML section
+above for what "with certainty" has to cover.
 
 ## Tests
 
@@ -308,7 +355,11 @@ highest-precedence first. No scanner, IPC or UI change is needed. Note that
   repeated keys, the 200-character caps, unterminated blocks) and the 4096-byte
   window, against real temporary files, plus the open-side guards: an identity
   that no longer matches, a symlink left at the path, and a FIFO (skipped on
-  win32) that must not block the call.
+  win32) that must not block the call. The TOML reader is covered against a
+  fixture shaped like OpenAI's own documented subagent, including its
+  `developer_instructions` decoy — a `name = "not-the-agent-name"` line inside
+  the multi-line string — and the two readers are asserted not to accept each
+  other's format.
 - `src/main/harness-artifacts.test.ts` — the security-critical file. It builds
   real workspaces in `os.tmpdir()` and mocks `node:fs` with pass-through wrappers
   that *record* every path the scan lists, stats, opens or reads, and that can
@@ -346,6 +397,14 @@ highest-precedence first. No scanner, IPC or UI change is needed. Note that
   block-quoted descriptions degrade to "no description" rather than rendering
   something wrong. So does a frontmatter block that does not close within the
   first 4096 bytes, and so does an artifact file that has more than one hard link.
+- TOML parsing is line-oriented too. A Codex subagent whose `name` or
+  `description` is a multi-line string, carries a backslash escape, or sits below
+  a table header reports no metadata and falls back to its file name.
+- Codex keeps `.agents/` and `.codex/` read-only inside its own `workspace-write`
+  sandbox, so an agent writing a skill or a subagent there is prompted for
+  approval first. Nothing appears in this panel until the user approves; the
+  extension's own seeding and Reset are unaffected, since they run in the main
+  process and not inside the sandbox.
 - A kind whose workspace holds more than `MAX_ENTRIES_SCANNED` (2000) directory
   entries is reported as `truncated` with no attempt to be exhaustive; its
   `examinedCount` and mtime range describe those 2000 entries, not the whole

@@ -1,0 +1,37 @@
+# Codex project configuration for this Freelens cluster workspace.
+#
+# Codex loads a project's `.codex/` layer only after you trust the folder — it
+# asks once, on the first launch, and remembers your answer. Until then nothing
+# in this file applies, so Freelens Agent Bridge passes the two settings a
+# cluster session cannot work without as launch flags instead:
+#
+#     codex --sandbox workspace-write --ask-for-approval on-request \
+#           -c sandbox_workspace_write.network_access=true
+#
+# Command-line flags outrank every config layer, so the values below mirror them
+# rather than fight them. Edit freely — Reset restores this file.
+
+# Ask before anything the sandbox does not already permit. Every mutating
+# kubectl or helm command is shown to you before it runs.
+approval_policy = "on-request"
+
+# The agent may write inside this workspace — its notes, the cluster map — and
+# nowhere else on your machine.
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+# kubectl and helm reach the cluster over the network, and Codex disables
+# network access in this sandbox by default, so a cluster session needs this on.
+# It does not widen what the agent may do to the cluster: your kubeconfig and
+# Kubernetes RBAC remain the security boundary.
+network_access = true
+
+# Codex keeps `.agents/`, `.codex/` and `.git/` read-only inside a writable
+# workspace. `build-cluster-map` writes its per-namespace skills under
+# `.agents/skills/`, so Codex asks for approval before each of those writes.
+#
+# To let them through without prompting, list this workspace's own `.agents`
+# directory as a writable root. It must be an absolute path — use the
+# "Reveal workdir" button to find it:
+#
+#     writable_roots = ["/absolute/path/to/this/workspace/.agents"]
