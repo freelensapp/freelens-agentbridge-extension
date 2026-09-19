@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadProvider, loadSelectedProvider, type StorageLike, saveSelectedProvider } from "./provider-selection";
+import {
+  loadProvider,
+  loadSelectedProvider,
+  type ProviderLoadResult,
+  type StorageLike,
+  saveSelectedProvider,
+} from "./provider-selection";
 
 class MemoryStorage implements StorageLike {
   readonly values = new Map<string, string>();
@@ -12,6 +18,13 @@ class MemoryStorage implements StorageLike {
   setItem(key: string, value: string): void {
     this.values.set(key, value);
   }
+}
+
+// The ready arm carries no `error`, so narrow before matching on the message.
+function errorOf(result: ProviderLoadResult | undefined): string {
+  if (!result || result.status === "ready") throw new Error(`expected a failure, got ${result?.status}`);
+
+  return result.error;
 }
 
 const checkChannel = "agentbridge-extension:check-provider";
@@ -65,6 +78,51 @@ describe("provider selection", () => {
       error: "not found",
     });
     expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  // Issue #23: the renderer offered Codex while the main process still ran the
+  // bundle it loaded at startup, and the raw throw reached the status line as
+  // "OpenAI Codex CLI: Error invoking remote method ... Unsupported AI CLI
+  // provider: codex" — which reads as a bug in the extension, not as "restart".
+  it("turns a provider the main process has never heard of into the restart instruction", async () => {
+    const invoke = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          "Error invoking remote method 'agentbridge-extension:check-provider': Error: Unsupported AI CLI provider: codex",
+        ),
+      );
+    const result = await loadProvider("cluster-a", "codex", invoke, () => true);
+
+    expect(result?.status).toBe("error");
+    const error = errorOf(result);
+
+    expect(error).toMatch(/restart/i);
+    expect(error).toMatch(/window reload only updates the UI/);
+    expect(error).not.toMatch(/Unsupported AI CLI provider/);
+    // The page already renders `${provider.name}: ${error}`, so repeating the
+    // name here would read as "OpenAI Codex CLI: OpenAI Codex CLI ...".
+    expect(error).not.toMatch(/Codex/);
+  });
+
+  it("applies the same treatment to a failed workspace preparation", async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "ready", version: "1.2.3" })
+      .mockRejectedValueOnce(new Error("Error: Unsupported AI CLI provider: codex"));
+    const result = await loadProvider("cluster-a", "codex", invoke, () => true);
+
+    expect(result?.status).toBe("error");
+    expect(errorOf(result)).toMatch(/window reload only updates the UI/);
+  });
+
+  it("reports an unrelated probe failure verbatim", async () => {
+    const invoke = vi.fn().mockRejectedValue(new Error("EACCES: permission denied"));
+
+    await expect(loadProvider("cluster-a", "claude", invoke, () => true)).resolves.toEqual({
+      status: "error",
+      error: "EACCES: permission denied",
+    });
   });
 
   it("drops result when selection changes after probe", async () => {

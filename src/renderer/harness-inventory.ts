@@ -1,5 +1,6 @@
 import { HARNESS_ARTIFACT_KIND_ORDER } from "../common/harness-artifacts";
 import { CAPABILITY_KIND_LABEL, defaultIconForKind } from "./capability-hints";
+import { describeStaleMainProcessError, FULL_RESTART_REMEDY } from "./stale-main-process";
 
 import type { HarnessArtifactGroup, HarnessArtifactKind, HarnessInventoryResult } from "../common/harness-artifacts";
 import type { IpcInvoke } from "./provider-selection";
@@ -127,22 +128,15 @@ export function opensCoalesceWindow(result: HarnessInventoryResult | undefined):
   return result?.status === "ok";
 }
 
-// Electron's wording when `ipcMain.invoke` reaches a channel nobody handles.
-// Matched on the stable fragment: the full string embeds the channel name.
-const NO_HANDLER_PATTERN = /No handler registered/i;
-
-// Freelens re-requires the renderer entry on every window reload, but the main
-// process keeps its extension instance for the life of the app: ExtensionLoader
-// skips any extension already in `extensionInstances` (extension-loader.ts,
-// `alreadyInit`), so `onActivate` — and therefore every `ipcMain.handle` call —
-// never runs again. Rebuilding while Freelens is open leaves a new renderer
-// talking to an old main process, and any channel added since startup is
-// missing. Nothing in the renderer can recover from that, so the only useful
-// error is the one that says which button to press.
+// Rebuilding or updating while Freelens is open leaves a new renderer talking to
+// the main process bundle loaded at startup, which is missing any channel — or
+// any provider — added since. See stale-main-process.ts for why the renderer
+// cannot recover and can only name the remedy.
 export function describeInventoryError(message: string): string {
-  if (!NO_HANDLER_PATTERN.test(message)) return message;
-
-  return "Workspace artifacts need a full Freelens restart: this session's main process started before the extension gained the scanner. Quitting and reopening Freelens is required — a window reload only updates the UI.";
+  return describeStaleMainProcessError(
+    message,
+    `Workspace artifacts need a full Freelens restart: this session's main process started before the extension gained the scanner. ${FULL_RESTART_REMEDY}`,
+  );
 }
 
 // Mirrors loadProvider in provider-selection.ts: isCurrent() gates every state

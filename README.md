@@ -109,9 +109,13 @@ Alternatively, open the following URL in the browser to install directly:
 
 **After installing or upgrading, restart Freelens completely.** Freelens loads
 extension code into its main process once per app run, so a window reload picks
-up the new UI but leaves the old main process behind. Symptoms are errors of the
-form `No handler registered for 'agentbridge-extension:…'`; quitting and
-reopening Freelens clears them.
+up the new UI but leaves the old main process behind. The symptom is a provider
+that fails for no apparent reason — most often `No handler registered for
+'agentbridge-extension:…'`, or `Unsupported AI CLI provider: …` naming a
+provider the dropdown clearly offers, which means the upgrade added it to the UI
+but the running main process predates it. Quitting and reopening Freelens clears
+both. The extension detects these two cases and says so in place of the raw
+error.
 
 ### 3. Launch a session
 

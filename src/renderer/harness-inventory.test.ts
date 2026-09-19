@@ -240,6 +240,17 @@ describe("describeInventoryError", () => {
     expect(message).not.toMatch(/No handler registered/);
   });
 
+  // The same stale bundle reached through a channel that *does* exist: the
+  // handler is there, its provider registry is older than the id it was handed.
+  it("turns a provider the main process has never heard of into the restart instruction", () => {
+    const message = describeInventoryError(
+      "Error invoking remote method 'agentbridge-extension:list-provider-artifacts': Error: Unsupported AI CLI provider: codex",
+    );
+
+    expect(message).toMatch(/restart/i);
+    expect(message).not.toMatch(/Unsupported AI CLI provider/);
+  });
+
   it("leaves every other failure untouched", () => {
     // Errors the main process reports about the scan itself are already the
     // most specific thing anyone can say, and rewriting them would hide them.
