@@ -8,11 +8,13 @@
  * declaratively (`permission.bash` on OpenCode, `permissions.allow` on Claude
  * Code, `approval_policy` on Codex).
  *
- * What it does: every `kubectl` / `helm` invocation inside a bash command is
- * checked against a read-only allowlist. Read verbs run untouched; everything
- * else — `delete`, `apply`, `create`, `edit`, `patch`, `scale`, `drain`,
- * `exec`, `cordon`, `rollout`, `helm upgrade`, ... — asks you first, and is
- * blocked if you decline or if no UI is attached to ask.
+ * What it does: every `kubectl`, `oc` or `helm` invocation inside a shell
+ * command — including the ones chained behind `&&`, `;` or a `sudo` — is checked
+ * against a read-only allowlist. Read verbs run untouched; everything else —
+ * `delete`, `apply`, `create`, `edit`, `patch`, `scale`, `drain`, `exec`,
+ * `cordon`, `rollout`, `helm upgrade`, and anything unrecognised — asks you
+ * first, and is blocked if you decline or if no UI is attached to ask. Commands
+ * that touch none of those three tools are not intercepted at all.
  *
  * Three things to know before trusting it:
  *
