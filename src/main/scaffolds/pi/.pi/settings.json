@@ -1,0 +1,4 @@
+{
+  "defaultTools": ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"],
+  "sessionDir": ".pi/sessions"
+}

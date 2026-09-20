@@ -374,6 +374,30 @@ describe("listProviderArtifacts", () => {
     expect(origins["ns-map-default"]).toBe("generated");
   });
 
+  // Pi is the first provider that declares no agent source, so its scan result
+  // has one group rather than two. The renderer drops empty kinds already, but a
+  // scan that invented an agent group here would put an authoritative "0 agents"
+  // in front of the user for a CLI that has no sub-agents at all.
+  it("scans Pi skills from both roots and reports no agent group", () => {
+    const { userData, workdir } = createWorkspace("pi");
+    setMtime(writeSkill(workdir, ".pi/skills", "shared"), 1_000);
+    setMtime(writeSkill(workdir, ".agents/skills", "shared"), 2_000);
+    writeSkill(workdir, ".agents/skills", "only-in-second");
+
+    const result = listProviderArtifacts(userData, "cluster-1", "pi");
+
+    expect(result.status).toBe("ok");
+    expect(groupsOf(result).map(({ kind }) => kind)).toEqual(["skill"]);
+
+    const group = groupFor(result, "skill");
+
+    // `.pi/skills` is the primary root, so it wins the name even though the
+    // `.agents/skills` copy is newer.
+    expect(group.count).toBe(2);
+    expect(group.artifacts.find(({ name }) => name === "shared")?.path).toBe(".pi/skills/shared/SKILL.md");
+    expect(group.artifacts.every(({ origin }) => origin === "generated")).toBe(true);
+  });
+
   it("dedups by name across roots, first root wins", () => {
     const { userData, workdir } = createWorkspace("opencode");
     setMtime(writeSkill(workdir, ".opencode/skills", "shared"), 1_000);

@@ -72,10 +72,21 @@ be run, the inventory describes what **exists** on disk — including everything
 | Claude Code        | `.claude/skills`                                       | `.claude/agents`                      |
 | GitHub Copilot CLI | `.github/skills`                                       | `.github/agents`                      |
 | OpenAI Codex CLI   | `.agents/skills`                                       | `.codex/agents` (`toml-file`)         |
+| Pi                 | `.pi/skills`, `.agents/skills`                         | — (no sub-agent concept)              |
 
 A kind with several roots dedups by artifact **name**, first root wins — that is
 what makes OpenCode's three skill roots (and both spellings of its agent
 directory) safe to declare.
+
+Pi is the first provider that declares **no agent source at all**. It has no
+sub-agent concept — upstream's answer is "spawn pi instances via tmux, or build
+your own with extensions" — and the third-party packages that add them define no
+standard directory, so there is nothing authoritative to scan. Declaring a root
+anyway would report an authoritative `0 agents` forever, which is the Codex TOML
+mistake in reverse. Nothing in the scanner or the UI needs a branch for it:
+`summarizeInventory` keeps only kinds with `count > 0`, and
+`harness-artifacts-section.tsx` renders nothing for an empty group, so Pi simply
+shows a skills chip and no agents chip.
 
 Codex is the only provider whose agents root uses `toml-file`: a Codex subagent
 is a standalone TOML file (`name`, `description`, `developer_instructions`), not
@@ -99,8 +110,8 @@ Per artifact: `kind`, `name`, optional `description`, workspace-relative `path`
   provider registry declares as an editor, `"generated"` otherwise. In practice
   only Copilot CLI's `.github/skills/build-cluster-map/SKILL.md` and Codex CLI's
   `.agents/skills/build-cluster-map/SKILL.md` land inside a scanned root;
-  OpenCode's and Claude Code's seeded command files live outside their artifact
-  roots, so everything they report is `"generated"`.
+  OpenCode's, Claude Code's and Pi's seeded command files live outside their
+  artifact roots, so everything they report is `"generated"`.
 - Artifacts are ordered **oldest-first** (ties broken by name), so a stale
   straggler is the first row a user sees without sorting anything.
 
@@ -337,6 +348,13 @@ highest-precedence first. No scanner, IPC or UI change is needed **as long as on
 of the three existing layouts fits**. Note that
 `src/common/agentbridge-providers.test.ts` asserts the entire registry with
 `toEqual`, so that expected literal has to be updated in the same change.
+
+**Either kind may be omitted.** Declare a source only for artifact kinds the CLI
+actually has, and leave a kind out when it has no standard directory for it —
+Pi declares skills and no agents. An invented root is worse than a missing one:
+a root nobody writes to reports `0` with the same authority as a real count,
+whereas a kind that is absent from `artifactSources` simply never appears in the
+panel.
 
 A provider whose artifacts are neither `<name>/SKILL.md`, `<name>.md` nor
 `<name>.toml` needs a fourth layout: add it to `ArtifactLayout`, give it an

@@ -3,6 +3,7 @@ import { ipcRenderer } from "electron";
 import { observer } from "mobx-react";
 import * as monacoEditor from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import { useEffect, useRef, useState } from "react";
 import { monacoLanguageFor } from "./editor-language";
 import { createSaveLifecycle } from "./save-lifecycle";
@@ -10,11 +11,34 @@ import { resolveHostMonacoTheme } from "./section-theme";
 
 import type { EditorDefinition } from "../common/agentbridge-providers";
 
+// Monaco asks for a worker by language label. Everything the extension seeds is
+// happy with the generic editor worker except Pi's `.pi/extensions/*.ts`, whose
+// diagnostics live in Monaco's own TypeScript worker — and without it the
+// language service silently reports nothing.
 (self as any).MonacoEnvironment = {
-  getWorker() {
-    return new editorWorker();
+  getWorker(_workerId: string, label: string) {
+    return label === "typescript" || label === "javascript" ? new tsWorker() : new editorWorker();
   },
 };
+
+// Syntax errors in the seeded Pi guard are not cosmetic: a `.pi/extensions/*.ts`
+// that does not parse makes Pi exit 1 at startup, so a red squiggle here is the
+// difference between an editable mistake and a session that will not open.
+//
+// Semantic diagnostics are off, and would be pure noise: the guard's only import
+// is an `import type` from `@earendil-works/pi-coding-agent`, which is installed
+// on the user's machine and never in the seeded workspace, so every type in the
+// file would resolve to an error the user cannot fix.
+// Optional call on purpose: `languages.typescript` comes from Monaco's
+// TypeScript `monaco.contribution`, which the bundled `editor.main` includes
+// today. This runs at module scope, so if a future Monaco build ever drops it a
+// throw here would take the whole page down for every provider — losing
+// diagnostics on one file is the better failure.
+monacoEditor.languages.typescript?.typescriptDefaults.setDiagnosticsOptions({
+  noSemanticValidation: true,
+  noSyntaxValidation: false,
+  noSuggestionDiagnostics: true,
+});
 
 loader.config({ monaco: monacoEditor as any });
 

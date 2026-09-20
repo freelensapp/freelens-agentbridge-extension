@@ -184,7 +184,7 @@ export function HarnessArtifactsSection({
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <span style={{ opacity: 0.7, fontSize: "0.85em" }}>
             Seeded by this extension and generated in this cluster's workspace. Your personal <code>~/.claude</code>,{" "}
-            <code>~/.opencode</code> or <code>~/.github</code> not counted.
+            <code>~/.opencode</code>, <code>~/.github</code> or <code>~/.pi/agent</code> not counted.
           </span>
 
           {result.status === "ok" && total === 0 && (
