@@ -70,11 +70,14 @@ Guidelines:
 - Return `null` from `getInvocation` for any provider that does not support the
   capability — that is how the card self-hides.
 - Vary the invocation per provider when they differ, and treat the fall-through
-  as a claim you have to defend: only Claude Code and OpenCode have project-local
+  as a claim you have to defend: Claude Code, OpenCode and Pi have project-local
   slash commands. Copilot CLI invokes skills by natural language, and Codex CLI
   mentions them with `$<name>` — its `~/.codex/prompts/` are global-only and
   deprecated, so a hint that falls through to `/namespace-doc` tells a Codex user
-  to type a command their CLI does not have.
+  to type a command their CLI does not have. Pi earns the fall-through: a
+  `.pi/prompts/<name>.md` file is a real `/<name>` command, with `description`
+  and `argument-hint` frontmatter and `$1` / `$@` / `${1:-default}` argument
+  substitution, so it needs no branch of its own.
 - No view changes are needed — the generic card handles rendering.
 
 ## Tests

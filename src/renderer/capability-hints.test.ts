@@ -41,13 +41,20 @@ describe("cluster-map capability hint", () => {
     });
   });
 
+  // Pi needs no branch in the hint: `.pi/prompts/<name>.md` becomes `/<name>`,
+  // so it falls through to the default like Claude Code and OpenCode.
+  it("shows the slash command for Pi", () => {
+    expect(clusterMapHint().getInvocation("pi")).toEqual({ verb: "Run", command: "/build-cluster-map" });
+  });
+
   it("offers a slash command only to the providers that have project-local ones", () => {
     const hint = clusterMapHint();
+    const withSlashCommands = new Set(["claude", "opencode", "pi"]);
 
     for (const providerId of agentBridgeProviders.map(({ id }) => id)) {
       const slash = hint.getInvocation(providerId)?.command.startsWith("/") ?? false;
 
-      expect(slash, `${providerId}`).toBe(providerId === "claude" || providerId === "opencode");
+      expect(slash, `${providerId}`).toBe(withSlashCommands.has(providerId));
     }
   });
 

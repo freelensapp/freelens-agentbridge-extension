@@ -2,7 +2,7 @@
 
 ## Overview
 
-- Freelens extension that opens per-cluster sessions for OpenCode, Claude Code, GitHub Copilot CLI, or OpenAI Codex CLI.
+- Freelens extension that opens per-cluster sessions for OpenCode, Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, or Pi.
 - Follows Freelens' two-process Electron model: renderer owns UI and terminal orchestration; main process owns filesystem, child-process, settings, and shell operations.
 - Uses local files only. No server, database, direct Kubernetes client, or provider API integration.
 
@@ -64,12 +64,12 @@
 ## Key Abstractions
 
 - `AgentBridgeProvider`: registry entry defining executable, probe/launch arguments, docs, editable files, and reset scope.
-- `EditorDefinition`: declared provider file contract containing path, title, syntax, role, and optional scaffold source. `language` is a syntax name, not a Monaco language id; the renderer maps it.
+- `EditorDefinition`: declared provider file contract containing path, title, syntax, role, and optional scaffold source. `language` is a syntax name (`json`, `markdown`, `toml`, `typescript`), not a Monaco language id; the renderer maps it. Providers declare as many editors as their native layout needs; Pi declares four, because its guardrail hook and its settings are separate files.
 - `ProviderCheckResult` / `ProviderLoadResult`: readiness state passed from process probe through renderer UI.
 - `ExtensionSettings`: normalized probe timeout and external editor command/URI scheme.
 - `LaunchSessionDeps`: small adapter boundary between framework-independent launch timing and Freelens terminal APIs.
 - `CapabilityHint`: data-only capability description whose provider-specific invocation controls applicability.
-- `ArtifactSource`: registry entry declaring, per artifact kind, the workspace-relative roots scanned for the inventory and their directory layout.
+- `ArtifactSource`: registry entry declaring, per artifact kind, the workspace-relative roots scanned for the inventory and their directory layout. A kind may be omitted when the CLI has no such concept — Pi declares skills only, since it has no sub-agents — and the renderer needs no branch for it, because `summarizeInventory` already keeps only groups with `count > 0`.
 - `HarnessArtifact` / `HarnessArtifactGroup`: normalized inventory record and its derived per-kind rollup (count, mtime range, truncation).
 - `agentbridge-extension:*`: explicit renderer/main IPC boundary for all privileged operations.
 
@@ -79,7 +79,7 @@
 - Electron: IPC, application paths, filesystem reveal, and external URI handling.
 - React 17, MobX, and MobX React: renderer UI and host-observed state; injected by Freelens at runtime.
 - Monaco Editor and `@monaco-editor/react`: only bundled runtime UI dependencies.
-- OpenCode, Claude Code, GitHub Copilot CLI, and OpenAI Codex CLI: optional user-installed executables discovered on `PATH`; extension does not bundle them.
+- OpenCode, Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, and Pi: optional user-installed executables discovered on `PATH`; extension does not bundle them.
 - Node.js `>=22`: filesystem, hashing, paths, and child-process APIs.
 - Kubernetes access: indirect through `KUBECONFIG` inherited by Freelens terminals; Kubernetes RBAC remains authorization boundary.
 
