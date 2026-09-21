@@ -21,11 +21,11 @@ that could not be verified are collected in §9.
 
 `pi` is ambiguous on npm; installing the wrong one ships a wrong README line.
 
-| Package                            | What it is                                                  |
-| ---------------------------------- | ----------------------------------------------------------- |
-| `@earendil-works/pi-coding-agent`  | **The one.** bin `pi`, v0.86.1, `engines.node >= 22.19.0`     |
-| `@mariozechner/pi-coding-agent`    | Same project, previous scope, **deprecated** at 0.73.1        |
-| `@mariozechner/pi`                 | **Not the agent** — a vLLM GPU-pod manager, bin `pi-pods`     |
+| Package                           | What it is                                                |
+| --------------------------------- | --------------------------------------------------------- |
+| `@earendil-works/pi-coding-agent` | **The one.** bin `pi`, v0.86.1, `engines.node >= 22.19.0` |
+| `@mariozechner/pi-coding-agent`   | Same project, previous scope, **deprecated** at 0.73.1    |
+| `@mariozechner/pi`                | **Not the agent** — a vLLM GPU-pod manager, bin `pi-pods` |
 
 Verified with `npm view`:
 
