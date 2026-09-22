@@ -9,30 +9,30 @@
 
 ## Il costo nascosto non sono i comandi
 
-Alert alle 9:40: un servizio della pipeline documentale non processa più niente.
+Alert alle 9:40: un servizio della pipeline documentale ha smesso di processare qualsiasi cosa.
 
-Prima di fare qualsiasi cosa utile devi rispondere a quattro domande che non
+Prima di fare qualcosa di utile devi rispondere a quattro domande che non
 parlano di Kubernetes: quale cluster, quale namespace, chi chiama chi in quella
-pipeline, e cosa avevamo scoperto l'ultima volta. Le prime tre risposte stanno nella tua
-testa, la quarta in un thread Slack di 3 mesi fa.
+pipeline, e cosa avevi già scoperto l'ultima volta. Le prime tre risposte le hai in
+testa, la quarta è sepolta in un thread Slack di tre mesi fa.
 
-I comandi sono l'ultima parte del problema. È il contesto quello che costa, e lo paghi
-ogni volta da zero.
+I comandi sono l'ultima parte del problema. Il contesto è quello che costa davvero,
+e lo paghi ogni volta da zero.
 
-Un agent AI che sa scrivere `kubectl` ti fa risparmiare il primo pezzo, quello
-piccolo. Un agent che parte già sapendo dove si trova ti fa risparmiare il
-resto. La differenza tra un terminale con un'AI dentro e un ambiente di lavoro
-in cui l'AI ha una memoria è tutta qui.
+Un agent AI che sa scrivere `kubectl` ti fa risparmiare la parte piccola. Un
+agent che parte già sapendo dove si trova ti fa risparmiare il resto. Tutta la
+differenza tra un terminale con un'AI dentro e un ambiente di lavoro in cui
+l'AI ha memoria sta lì.
 
 ## Cos'è un agent workspace
 
-Un terminale con un coding agent dentro è senza stato: apri, chiedi, chiudi, e la volta
-dopo riparti da zero. La memoria del contesto resta la tua.
+Un terminale con un coding agent dentro è senza stato: apri, chiedi, chiudi, e la
+volta dopo riparti da zero. La memoria del contesto resta tutta tua.
 
-Un *agent workspace* è l'opposto: una directory di lavoro dedicata in cui
-l'agente vive. Dentro c'è tutto il suo harness, cioè l'insieme delle cose che
-gli dicono come comportarsi, cosa sa e cosa può fare. I nomi dei file cambiano
-da provider a provider, i livelli no:
+Un *agent workspace* è l'opposto: una directory di lavoro dedicata dove
+l'agente vive. Dentro c'è tutto il suo harness, cioè l'insieme di cose che gli
+dicono come comportarsi, cosa sa e cosa può fare. I nomi dei file cambiano da
+provider a provider, i livelli restano gli stessi:
 
 - **Hot memory.** Il file di istruzioni letto a ogni inizio sessione —
   `AGENTS.md`, `CLAUDE.md`, `copilot-instructions.md`. Regole stabili,
@@ -40,29 +40,32 @@ da provider a provider, i livelli no:
   a ogni messaggio.
 - **Permessi.** Il file che dice cosa l'agente può fare senza chiedere: quali
   comandi passano da soli, quali si fermano in attesa di un sì. È il confine tra
-  autonomia e controllo, e uno dei file che AgentBridge semina per te.
-- **Memoria a lungo termine.** Documenti, note, diagrammi, una wiki mantenuta
-  dall'agente: tutto quello che non sta nella memoria calda e che l'agente apre
-  quando serve. È il posto in cui un'esplorazione diventa un appunto che resta.
+  autonomia e controllo, ed è uno dei file che AgentBridge ti prepara in
+  anticipo.
+- **Memoria a lungo termine.** Documenti, note, diagrammi, una wiki tenuta
+  aggiornata dall'agente stesso: tutto ciò che non entra nella memoria calda e
+  che l'agente apre quando ne ha bisogno. È lo spazio in cui un'esplorazione
+  diventa un appunto che resta.
 - **Memoria operativa.** Le skill: procedure con un nome e una descrizione, che
-  l'agente carica quando la situazione le richiama. Una mappa del namespace, un
+  l'agente richiama quando la situazione lo richiede. Una mappa del namespace, un
   runbook di troubleshooting, una checklist di upgrade. È il livello che
   trasforma un giro fatto una volta in un gesto riusabile.
 - **Agenti e subagent.** Definizioni di agenti specializzati — con strumenti e
-  istruzioni propri — e la possibilità di lanciarne in parallelo su un compito.
-- **Estensioni varie.** Server MCP, plugin, hook: strumenti in più e
-  automazioni, quando il CLI li supporta. Non sono il minimo sindacale, ma è lì
-  che un harness cresce.
+  istruzioni propri — e la possibilità di lanciarne più in parallelo sullo
+  stesso compito.
+- **Estensioni varie.** Server MCP, plugin, hook: strumenti extra e
+  automazioni, quando il CLI le supporta. Non sono l'essenziale, ma è lì che
+  un harness cresce davvero.
 
-Questa organizzazione ha un nome, emerso all'inizio del 2026: *harness
+Questa organizzazione ha un nome, comparso all'inizio del 2026: *harness
 engineering*. La formula che circola è `Agent = Model + Harness`, e il
-workspace è la porzione di harness che possiedi tu — quello che Birgitta
+workspace è la parte di harness che possiedi tu — quello che Birgitta
 Böckeler chiama [outer
 harness](https://martinfowler.com/articles/harness-engineering.html), distinto
-da quello che ogni CLI si porta dentro. La tassonomia dei livelli qui sopra è
-la stessa che trovi in
+da quello che ogni CLI porta già con sé. La tassonomia qui sopra è la stessa
+che trovi in
 [letteratura](https://www.langchain.com/blog/the-anatomy-of-an-agent-harness),
-raggruppata per come si usa un cluster.
+solo riorganizzata attorno a come si usa un cluster.
 
 La composizione, in un colpo d'occhio:
 
@@ -79,23 +82,25 @@ flowchart LR
 ## Cosa ci mette AgentBridge
 
 [AgentBridge](https://github.com/freelensapp/freelens-agentbridge-extension) è
-un'estensione di [Freelens](https://freelens.app) che **costruisce l'agent workspace al posto tuo**. 
+un'estensione di [Freelens](https://freelens.app) che **ti costruisce l'agent workspace al posto tuo**.
 Apri un cluster, scegli il provider — OpenCode, Claude
-Code, GitHub Copilot CLI o OpenAI Codex CLI — e avvii la sessione in una tab del
-terminale agganciata a Freelens. Quando il prompt appare, tre cose sono già a
-posto: `KUBECONFIG` punta al cluster che hai aperto; la directory di lavoro è
-`<userData>/agentbridge-sessions/<cluster-id>/<provider-id>/` e dentro ci sono già un file di istruzioni e un
-file di permessi, nel formato che il provider si aspetta.
+Code, GitHub Copilot CLI o OpenAI Codex CLI — e avvii la sessione in una tab
+del terminale agganciata a Freelens. Quando il prompt appare, tre cose sono già
+a posto: `KUBECONFIG` punta al cluster che hai aperto, la directory di lavoro
+è `<userData>/agentbridge-sessions/<cluster-id>/<provider-id>/`, e dentro trovi
+già un file di istruzioni e un file di permessi, nel formato che il provider
+si aspetta.
 
 Il seeding non è distruttivo: quello che scrivi tu sopravvive agli
 aggiornamenti, e i tre file gestiti — istruzioni, permessi, comando — si
 modificano da un editor dentro Freelens. Il resto dell'harness lo riempi
 lavorando: la memoria a lungo termine, le skill e gli agenti custom nascono
-dalle sessioni, o li aggiungi tu, perché la directory è una directory normale.
+dalle sessioni, oppure li aggiungi tu a mano, perché la directory resta una
+directory normale.
 
-Il workspace è persistente e separato per coppia cluster+provider. Quello che
-l'agente impara su produzione non finisce nel contesto di staging, e la mappa
-che costruisce oggi è ancora lì lunedì prossimo.
+Il workspace è persistente e separato per ogni coppia cluster+provider. Quello
+che l'agente impara su produzione non finisce nel contesto di staging, e la
+mappa che costruisce oggi è ancora lì lunedì prossimo.
 
 Un'ultima nota: OpenCode, uno dei provider, è anche uno degli 11 harness
 passati al setaccio in [questo studio sul loro codice
@@ -113,29 +118,29 @@ letture `helm`. Tutto il resto — `apply`, `patch`, `delete`, `scale`, `exec` �
 si ferma e chiede. In pratica: l'analisi è autonoma, la modifica ha un gate.
 
 Il gate sta nel file dei permessi del workspace ed è per cluster. Su produzione
-lo lasci stretto; su un cluster kind puoi allargarlo quanto vuoi; su staging
-puoi permettere `rollout restart` senza permettere `delete`. È il punto in cui
+lo tieni stretto, su un cluster kind puoi allargarlo quanto vuoi, su staging
+puoi permettere `rollout restart` senza permettere `delete`. È il punto dove
 decidi tu il grado di autonomia, invece di subirlo. La modifica si fa
 dall'editor e vale dalla sessione successiva.
 
-Sopra tutto questo c'è il confine che conta davvero: l'RBAC del kubeconfig che Freelens passa
-all'agent. Non potrà mai fare più di quanto puoi fare tu.
+Sopra tutto questo c'è il confine che conta davvero: l'RBAC del kubeconfig che
+Freelens passa all'agent. Non potrà mai fare più di quanto puoi fare tu.
 
 Quanto lavoro scorre dietro un gate che non chiede? Prendi il comando di
 mappatura che vedi tra poco: un subagent per namespace, fino a cinque in
-parallelo, e decine di comandi di lettura incatenati. Il gate resta su un gesto
-solo, quello che cambia lo stato.
+parallelo, e decine di comandi di lettura incatenati tra loro. Il gate resta
+su un solo gesto, quello che cambia lo stato.
 
-Il resto dell'articolo è una giornata. Cluster `prod-eu-1` e `staging-eu-1`,
+Il resto dell'articolo racconta una giornata. Cluster `prod-eu-1` e `staging-eu-1`,
 namespace `docpipe`, una pipeline che prende PDF e li rende cercabili:
 `upload-api`, `ocr-worker`, `doc-store`, `indexer`, `callback-dispatcher`,
-`search-api`. Nella giornata uso OpenCode; con gli altri provider
-cambiano i nomi dei file e i meccanismi di approvazione, non l'idea.
+`search-api`. Nella giornata uso OpenCode; con gli altri provider cambiano i
+nomi dei file e i meccanismi di approvazione, non l'idea di fondo.
 
 ## Mattina — un cluster che non hai mai visto
 
 Sei in `prod-eu-1` da ieri. Freelens ti mostra ventidue deployment in sei
-namespace. Sai i nomi dei servizi, non sai come si parlano.
+namespace. Sai i nomi dei servizi, non sai come si parlano tra loro.
 
 ```
 Ricostruisci come funziona la pipeline nel namespace docpipe: chi chiama chi,
@@ -143,10 +148,10 @@ cosa sta in mezzo, dove sono i punti di rottura. Salva la mappa dove la
 ritrovi domani.
 ```
 
-Il comando `/build-cluster-map` che l'estensione pre-installa nel workspace fa
-esattamente questo giro, se preferisci non scrivere il prompt a mano. È
+Il comando `/build-cluster-map`, che l'estensione pre-installa nel workspace,
+fa esattamente questo giro, se preferisci non scrivere il prompt a mano. È
 read-only e idempotente: alla seconda esecuzione aggiorna quello che c'è invece
-di duplicarlo. 
+di duplicarlo.
 
 **Cosa ha fatto al posto tuo** — tutto in lettura, già autorizzato nel
 workspace:
@@ -164,8 +169,8 @@ workspace:
    più un blocco di navigazione corto nel file di istruzioni.
 
 **L'esito.** La mappa non è quella che avresti disegnato tu. Il servizio si
-chiama `indexer`, quindi avresti detto che indicizza i documenti appena passano
-dall'OCR. Invece `indexer` è un batch che gira di notte per riconciliare;
+chiama `indexer`, quindi avresti immaginato che indicizzi i documenti appena
+usciti dall'OCR. Invece `indexer` è un batch notturno di riconciliazione;
 l'indicizzazione in tempo reale la fa `search-api` su un endpoint interno. Il
 nome mentiva, come mentono i nomi dopo due anni di refactoring.
 
@@ -191,7 +196,7 @@ description: Map of the docpipe namespace in prod-eu-1 — workloads,
 
 Da domani ogni domanda su `docpipe` parte già informata: l'agent carica la
 skill quando serve, e il blocco di navigazione risponde a "quale namespace
-contiene X" senza esplorare niente.
+contiene X" senza dover esplorare niente.
 
 ![placeholder: la skill generata per il namespace docpipe](TODO-immagine-2.png)
 
@@ -217,8 +222,8 @@ flowchart LR
 ## Metà mattina — `ocr-worker` riavvia in loop
 
 Freelens ti mostra cinque pod `ocr-worker`, tre in `CrashLoopBackOff`. I restart
-sono 12, 9, 3, 0, 0. Niente deploy da ieri. Quindi non l'hai rotto tu, almeno
-non oggi.
+sono 12, 9, 3, 0, 0. Nessun deploy da ieri. Quindi non sei stato tu a romperlo,
+almeno non oggi.
 
 ```
 I pod ocr-worker nel namespace docpipe riavviano in loop. Capisci perché.
@@ -242,7 +247,7 @@ I pod ocr-worker nel namespace docpipe riavviano in loop. Capisci perché.
 mettere una guardia sulla dimensione in ingresso, configurare una dead-letter
 queue. Le prime due toccano il deployment, e `kubectl patch` non è nella lista
 dei permessi di questo workspace: si ferma e chiede. Autorizzi solo la patch;
-guardia e dead-letter le porti in un branch, dove vanno discusse.
+guardia e dead-letter finiscono in un branch, dove vanno discusse con calma.
 
 La richiesta di approvazione mostra esattamente cosa sta per succedere:
 
@@ -252,30 +257,29 @@ $ kubectl -n docpipe patch deployment ocr-worker --type=json \
 Allow? [y/N]
 ```
 
-Su questo cluster il gate è al suo posto perché tu l'hai lasciato lì. Su
-`staging-eu-1`, se avessi pre-approvato `kubectl patch` nel profilo di quel
-workspace, lo stesso comando sarebbe passato senza chiedere. Stessa AI, due
+Su questo cluster il gate è al suo posto perché sei tu che l'hai lasciato lì.
+Su `staging-eu-1`, se avessi pre-approvato `kubectl patch` nel profilo di
+quel workspace, lo stesso comando sarebbe passato senza chiedere. Stessa AI, due
 profili di rischio: la differenza l'ha fatta una decisione presa una volta, non
 la disciplina del momento.
 
-**L'esito.** La memoria è il sintomo. Il problema è un documento che avvelena la
-coda: un PDF scansionato enorme che ogni worker prende, prova a elaborare,
-esaurisce la RAM. La coda non riceve conferma e lo ripassa al worker dopo. Il
+**L'esito.** La memoria è il sintomo. Il problema vero è un documento che avvelena la
+coda: un PDF scansionato enorme che ogni worker prende, prova a elaborare, ed
+esaurisce la RAM. La coda non riceve conferma e glielo rispedisce dopo. Il
 loop non gira intorno ai pod, gira intorno a quel messaggio.
 
-Alzare la memoria e chiuderla lì, come suggeriva `OOMKilled` alle 9:40, teneva
-su i worker quel tanto che basta a masticare quel documento, e lasciava lo
-stesso problema al prossimo file grosso. La differenza l'ha fatta il confronto
-tra i log di due pod invece di uno. È il passaggio che salti sempre, quando hai
-già in testa una risposta plausibile.
+Alzare la memoria e chiudere lì, come suggeriva `OOMKilled` alle 9:40, avrebbe
+tenuto in piedi i worker giusto il tempo di masticare quel documento, lasciando
+intatto lo stesso problema per il prossimo file grosso. La differenza l'ha
+fatta il confronto tra i log di due pod invece di uno: è il passaggio che salti
+sempre, quando hai già in testa una risposta plausibile.
 
 ![placeholder: l'agent chiede l'approvazione per la patch](TODO-immagine-3.png)
 
 ## Prima di pranzo — la modifica prima dell'apply
 
 Hai il manifest col nuovo limite di memoria per `ocr-worker`. Sintatticamente è
-giusto. La review l'ha vista una persona che ha guardato il diff, non il
-cluster.
+corretto. La review l'ha fatta chi ha guardato il diff, non il cluster.
 
 ```
 Questo manifest sta per andare su docpipe. Confrontalo con quello che gira
@@ -285,21 +289,21 @@ adesso e dimmi cosa si potrebbe rompere.
 **Cosa ha fatto al posto tuo** — solo letture, quindi nessuna conferma
 richiesta:
 
-1. Letto il deployment vivo e messo a confronto campo per campo con il file.
+1. Letto il deployment vivo e confrontato campo per campo con il file.
 2. Guardato `ResourceQuota` e `LimitRange` del namespace, che è il contorno che
-   nel diff non c'è.
-3. Contato le repliche attuali, per moltiplicare il nuovo limite per quelle vere
-   e non per quelle dichiarate nel chart.
+   nel diff non si vede.
+3. Contato le repliche attuali, per moltiplicare il nuovo limite su quelle vere
+   e non su quelle dichiarate nel chart.
 
 **Dove si è fermato.** Prima dell'`apply`. Ha preparato il comando e chiesto,
-come da permessi.
+come previsto dai permessi.
 
 **L'esito.** Due cose che il diff non poteva vedere. La prima: il namespace ha
 una `ResourceQuota` sulla memoria quasi esaurita, e il nuovo limite per tre
 repliche non ci sta dentro. L'`apply` passa la validazione, il ReplicaSet non
-riesce a creare i pod, e ti ritrovi a debuggare un rollout bloccato invece di un
+riesce a creare i pod, e finisci a debuggare un rollout bloccato invece di un
 crash. La seconda: il deployment che gira ha una env var che nel chart non
-esiste — qualcuno l'ha messa a mano mesi fa, e il tuo apply la cancella.
+esiste — qualcuno l'ha aggiunta a mano mesi fa, e il tuo apply la cancella.
 
 Il diff era corretto. Era il cluster a essere diverso da come lo immaginavi. E
 l'agent non stava valutando il manifest in astratto: guardava questo cluster,
@@ -307,9 +311,9 @@ perché è l'unico a cui è collegato.
 
 ## Pomeriggio — il bug che si vede solo in cluster
 
-`callback-dispatcher` non è in crash e non ha errori vistosi. Semplicemente
-alcuni callback agli utenti non arrivano. In locale il servizio funziona. In
-staging funziona.
+`callback-dispatcher` non va in crash e non mostra errori evidenti.
+Semplicemente alcuni callback agli utenti non arrivano. In locale il servizio
+funziona. In staging funziona.
 
 ```
 Alcuni callback non partono. Qui trovi il log del servizio, il checkout del
@@ -320,28 +324,30 @@ repo è in ~/src/callback-dispatcher. Guardali insieme.
 
 1. Filtrato il log applicativo sul pattern dei timeout, che era l'unica cosa
    ricorrente.
-2. Aperto nel repo il punto in cui la configurazione viene letta.
+2. Aperto nel repo il punto in cui viene letta la configurazione.
 3. Letto la ConfigMap viva del servizio e confrontato le chiavi con quelle che
    il codice cerca.
 
-**Dove si è fermato.** Ha trovato la correzione, ma la correzione è una
-modifica alla ConfigMap: chiede. E il fix nel repo lo propone come diff da
-guardare, non lo committa.
+**Dove si è fermato.** Ha trovato la correzione, ma è una modifica alla
+ConfigMap: chiede. E il fix nel repo lo propone come diff da rivedere, non lo
+committa.
 
-**L'esito.** Avresti guardato nella logica di retry. La causa è altrove: una
+**L'esito.** Avresti guardato nella logica di retry. La causa era altrove: una
 chiave rinominata. Il codice legge `callback_timeout_ms`, la ConfigMap in
 produzione dichiara ancora `callbackTimeoutMs`. Nessun errore, nessun log: il
-parser non trova la chiave e usa il default, che è troppo basso per i clienti
-lenti. Funzionava in staging perché lì la ConfigMap era stata aggiornata.
+parser non trova la chiave e usa il default, troppo basso per i clienti lenti.
+Funzionava in staging solo perché lì la ConfigMap era già stata aggiornata.
 
-Il path del checkout è nelle sue istruzioni: la prossima volta che un bug
-attraversa il confine tra codice e cluster, sa già dove sono i due lati.
+Il path del checkout resta nelle sue istruzioni: la prossima volta che un bug
+attraversa il confine tra codice e cluster, sa già dove guardare da entrambi i
+lati.
 
 ## Sera — audit, postmortem, runbook
 
-Sono le 18. L'incidente è chiuso, patch applicata e su Freelens è tutto
-verde — che è il momento peggiore per fidarsi. Restano le due cose che di sera
-si rimandano sempre: mettere a verbale e capire chi sarà il prossimo a saltare.
+Sono le 18. L'incidente è chiuso, la patch applicata, e su Freelens è tutto
+verde — che è proprio il momento peggiore per fidarsi. Restano le due cose che
+di sera si rimandano sempre: mettere tutto a verbale e capire chi sarà il
+prossimo a saltare.
 
 ```
 Tre cose. Uno: in docpipe trovami ogni container senza requests, ogni
@@ -353,9 +359,9 @@ abbiamo supposto. Tre: trasforma il giro di stamattina in un runbook riusabile.
 **Cosa ha fatto al posto tuo** — le prime due sono letture pre-autorizzate, la
 terza scrive solo dentro il suo workspace:
 
-1. Scritto lui il `jsonpath` che non ti ricordi mai e passato tutti i deployment
-   del namespace, non solo quelli che avevi in testa.
-2. Ricostruito la timeline da eventi e conteggi di restart, marcando riga per
+1. Scritto lui il `jsonpath` che tu non ricordi mai a memoria, e passato tutti
+   i deployment del namespace, non solo quelli che avevi in testa.
+2. Ricostruito la timeline da eventi e conteggi di restart, segnando riga per
    riga cosa è verificato e cosa è ipotesi.
 3. Salvato la procedura di stamattina come skill di troubleshooting nel
    workspace: dalla lettura dei restart alla verifica della coda, con i comandi
@@ -363,24 +369,25 @@ terza scrive solo dentro il suo workspace:
 
 **Dove si è fermato.** Non su un permesso: su una domanda. Quali passi di
 stamattina vanno nel runbook e quali erano specifici di quel singolo documento.
-È l'unica parte che non può decidere lui.
+È l'unica parte che non può decidere da solo.
 
-**L'esito.** Ti aspetti che l'audit accusi `ocr-worker`, il servizio che ti ha
-fatto perdere la mattina. Invece il punto fragile è `callback-dispatcher`: una
-replica sola, nessuna liveness probe, nessun `requests`. Il servizio silenzioso
-che nessuno guarda è sempre quello giusto da guardare. E la distinzione tra
-verificato e supposto — quella che nei postmortem scritti a mano di sera
-evapora — questa volta è nel documento.
+**L'esito.** Ti aspetteresti che l'audit puntasse il dito su `ocr-worker`, il
+servizio che ti ha fatto perdere la mattina. Invece il punto fragile è
+`callback-dispatcher`: una sola replica, nessuna liveness probe, nessun
+`requests`. Il servizio silenzioso che nessuno guarda è sempre quello giusto da
+controllare. E la distinzione tra verificato e supposto — quella che nei
+postmortem scritti a mano di sera finisce sempre per sparire — questa volta è
+nero su bianco nel documento.
 
-Il runbook è una skill nel workspace: la prossima sessione la trova già pronta, e
-committata nel repo di team diventa una procedura condivisa invece
-dell'ennesima pagina di wiki. Il pannello *Workspace artifacts* intanto ti
-mostra cosa l'agent ha prodotto, e in una seconda tab lo stesso audit gira su
-`staging-eu-1`, con permessi più larghi e note separate.
+Il runbook è una skill nel workspace: la prossima sessione la trova già pronta,
+e committata nel repo di team diventa una procedura condivisa invece
+dell'ennesima pagina di wiki. Il pannello *Workspace artifacts* nel frattempo ti
+mostra cosa l'agent ha prodotto, mentre in una seconda tab lo stesso audit gira
+su `staging-eu-1`, con permessi più larghi e note separate.
 
 ## Casi d'uso che non stanno in una giornata
 
-La giornata qui sopra è un campione. Il workspace si presta ad altro.
+La giornata qui sopra è solo un campione. Il workspace si presta a molto altro.
 
 - **Runbook di remediation e troubleshooting.** Un percorso di diagnosi
   codificato una volta e riusato; nel repo del team vale per tutti.
@@ -389,22 +396,22 @@ La giornata qui sopra è un campione. Il workspace si presta ad altro.
 - **Pre-check di upgrade.** API deprecate, PDB, quote e limiti prima di alzare
   la versione del cluster, quando l'errore costa molto più della verifica.
 - **Drift detection.** Confronto tra ciò che gira e ciò che il chart dichiara:
-  le modifiche a mano, come la env var di stamattina, saltano fuori prima di
+  le modifiche a mano, come la env var di stamattina, vengono fuori prima di
   essere cancellate da un apply.
 - **Audit periodico di postura.** Repliche singole, probe mancanti, `requests`
-  assenti, NetworkPolicy: la lista di sera, lanciata come controllo ricorrente.
+  assenti, NetworkPolicy: la lista di sera, trasformata in controllo ricorrente.
 - **Capacity e costi.** Con metrics-server o Prometheus i numeri ci sono; senza,
   resta una stima, non una cifra su cui firmare.
 
-Questi sono solo alcuni esempi di quello che possiamo chiedere ad un coding agent che vive nel tuo cluster,
-qui l'unico limite è la tua fantasia.
+Questi sono solo alcuni esempi di cosa si può chiedere a un coding agent che
+vive nel tuo cluster: qui il limite è solo la tua fantasia.
 
 ## Dove non credergli
 
-Tre confini, e sono importanti.
+Tre confini, ed è bene tenerli a mente.
 
-**Il file dei permessi non è sicurezza.** Controlla cosa l'agent chiede prima di
-fare, dentro la sua sessione. Il confine vero è l'RBAC del kubeconfig che
+**Il file dei permessi non è sicurezza.** Controlla cosa l'agent chiede prima
+di fare, dentro la sua sessione. Il confine vero è l'RBAC del kubeconfig che
 Freelens gli passa: l'agent non potrà mai fare più di quanto puoi fare tu.
 
 ![placeholder: l'editor dei permessi dentro Freelens](TODO-immagine-4.png)
@@ -413,12 +420,12 @@ Freelens gli passa: l'agent non potrà mai fare più di quanto puoi fare tu.
 
 La cosa che cambia dopo un mese non è la velocità con cui scrivi i comandi.
 
-È che il workspace del cluster ha smesso di essere una directory di
+È che il workspace del cluster ha smesso di essere una semplice directory di
 configurazione. Dentro ci sono la mappa della pipeline, il fatto che `indexer`
 non indicizza niente, la nota che quella coda non ha una dead-letter, il path
-del repo, il runbook della mattina. È la documentazione del cluster che per una
-volta è aggiornata, perché la aggiorna chi la usa mentre la usa — e non una
-persona designata, di venerdì pomeriggio, in un wiki che nessuno apre.
+del repo, il runbook della mattina. È la documentazione del cluster che per
+una volta è aggiornata, perché la aggiorna chi la usa mentre la usa — non una
+persona designata, il venerdì pomeriggio, su un wiki che nessuno apre mai.
 
 - [Estensione AgentBridge](https://github.com/freelensapp/freelens-agentbridge-extension)
 - [OpenCode](https://opencode.ai/docs/) · [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup) · [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) · [OpenAI Codex CLI](https://developers.openai.com/codex/cli/)
