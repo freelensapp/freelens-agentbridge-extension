@@ -1,6 +1,11 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
   "include": ["*.ts", "*.tsx", "src/**/*", "test/**/*"],
+  // Scaffolds are data the extension copies into a workspace verbatim, not
+  // project source. Pi's guardrail is a `.ts` file that imports types from
+  // `@earendil-works/pi-coding-agent` — a package this repository must not
+  // depend on, and which only exists on the machine running the agent.
+  "exclude": ["src/main/scaffolds/**"],
   "compilerOptions": {
     "composite": true,
     "esModuleInterop": true,

@@ -8,7 +8,10 @@
     "src/**/*.{test,spec}.{ts,tsx}",
     "test/**/*.{ts,tsx}"
   ],
-  "project": ["*.{js,mjs,ts}", "out/**/*.js!", "src/**/*.{ts,tsx}"],
+  // Scaffolds are copied into provider workspaces verbatim, never imported.
+  // Pi's `.pi/extensions/kubectl-guard.ts` would otherwise be reported as an
+  // unused file with an unresolved import.
+  "project": ["*.{js,mjs,ts}", "out/**/*.js!", "src/**/*.{ts,tsx}", "!src/main/scaffolds/**"],
 
   "ignoreBinaries": [
     "electron-rebuild",

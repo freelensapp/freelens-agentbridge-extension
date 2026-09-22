@@ -8,7 +8,10 @@
 - One or more supported providers on `PATH`: [OpenCode](https://opencode.ai/docs/),
   [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup),
   [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli),
-  or [OpenAI Codex CLI](https://developers.openai.com/codex/cli/)
+  [OpenAI Codex CLI](https://developers.openai.com/codex/cli/),
+  or [Pi](https://pi.dev/) —
+  `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`
+  (Node >= 22.19; `@mariozechner/pi` on npm is an unrelated GPU-pod manager)
 
 ## Setup
 

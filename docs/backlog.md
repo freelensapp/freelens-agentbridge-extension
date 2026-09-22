@@ -40,12 +40,27 @@ high-leverage items below close that gap.
   Codex CLI (done) also needed a `toml` editor language, a `toml-file` artifact
   layout, a capability-hint branch and the first non-empty `launchArgs`, because
   it is configured in TOML, has no project-local slash commands, and defaults to
-  a sandbox with no network. Budget a day per provider that is not a Claude
+  a sandbox with no network. Pi (done) needed a `typescript` editor language, a
+  fourth declared file and the first `artifactSources` without an agent kind,
+  because its guardrail is an executable extension rather than a permission
+  file and it has no sub-agents. Budget a day per provider that is not a Claude
   Code / OpenCode lookalike.
 - **4b. Model + extra-args per provider** — expose `launchArgs`/model selection
-  in the UI/settings. Codex is now the one provider with non-empty `launchArgs`,
-  and they are hardcoded; a user who wants `--model` or a different sandbox has
-  to edit `.codex/config.toml` and trust the folder first.
+  in the UI/settings. Codex is still the only provider with non-empty
+  `launchArgs` (Pi launches bare), and they are hardcoded; a user who wants a
+  different sandbox has to edit `.codex/config.toml` and trust the folder first.
+  Model choice is the wider half: **all five providers expose a model the UI
+  does not surface** — `/models` on OpenCode, `/model` elsewhere (`Ctrl+L` on
+  Pi), or `--model` on the command line — and the extension deliberately seeds
+  none. A model pinned in a project-scoped file outranks the picker the user
+  chose in their own CLI on every one of the five, and an uncredentialed pin is
+  a startup failure rather than a fallback: OpenCode throws
+  `ProviderModelNotFoundError` without mentioning the missing key, Pi's
+  equivalent is upstream
+  [pi#21](https://github.com/earendil-works/pi/issues/21), and on Copilot CLI a
+  valid model can still be disabled for the seat by an org admin. So this has to
+  be a UI control, with the user's credentials in view, rather than a constant
+  in a scaffold.
 - **4c. Custom tools scaffolding** — templates for provider-native custom tools.
   (existing: *development of custom tools*)
 

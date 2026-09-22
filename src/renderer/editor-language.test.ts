@@ -40,6 +40,14 @@ describe("monacoLanguageFor", () => {
     expect(bundledMonacoLanguages().has("toml")).toBe(false);
   });
 
+  // Unlike TOML, TypeScript needs no substitute: Monaco registers it as a full
+  // language service. Pi's `.pi/extensions/kubectl-guard.ts` is the first — and
+  // so far only — declared file that is executable code rather than data.
+  it("passes TypeScript through to Monaco's own language service", () => {
+    expect(monacoLanguageFor("typescript")).toBe("typescript");
+    expect(bundledMonacoLanguages().has("typescript")).toBe(true);
+  });
+
   it("never returns a language the bundled Monaco does not register", () => {
     const registered = bundledMonacoLanguages();
 

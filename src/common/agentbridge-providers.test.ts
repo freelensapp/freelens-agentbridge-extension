@@ -1,9 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { agentBridgeProviders, getAgentBridgeProvider } from "./agentbridge-providers";
 
+import type { ArtifactSource } from "./harness-artifacts";
+
+// The artifact-source shape rule, as a predicate rather than inline assertions,
+// so that relaxing it for Pi (which has no sub-agents) can be shown to still
+// reject a malformed provider. Returns one string per violation.
+function artifactSourceProblems(provider: { id: string; artifactSources: readonly ArtifactSource[] }): string[] {
+  const problems: string[] = [];
+  const kinds = provider.artifactSources.map(({ kind }) => kind);
+
+  if (kinds[0] !== "skill") problems.push("first artifact source must be the skill source");
+  else if (kinds.length > 2 || (kinds.length === 2 && kinds[1] !== "agent")) {
+    problems.push("expected a skill source optionally followed by one agent source");
+  }
+
+  for (const source of provider.artifactSources) {
+    const allowed = source.kind === "skill" ? ["skill-dir"] : ["markdown", "toml-file"];
+
+    if (!allowed.includes(source.layout)) problems.push(`${source.kind} source uses layout ${source.layout}`);
+  }
+
+  return problems;
+}
+
 describe("agentBridgeProviders", () => {
   it("lists products in intended order", () => {
-    expect(agentBridgeProviders.map(({ id }) => id)).toEqual(["opencode", "claude", "copilot", "codex"]);
+    expect(agentBridgeProviders.map(({ id }) => id)).toEqual(["opencode", "claude", "copilot", "codex", "pi"]);
   });
 
   it("has unique stable IDs", () => {
@@ -154,7 +177,81 @@ describe("agentBridgeProviders", () => {
           { kind: "agent", roots: [".codex/agents"], layout: "toml-file" },
         ],
       },
+      {
+        id: "pi",
+        name: "Pi",
+        executable: "pi",
+        versionArgs: ["--version"],
+        docsUrl: "https://pi.dev/",
+        launchArgs: [],
+        editors: [
+          {
+            path: "AGENTS.md",
+            title: "Instructions (AGENTS.md)",
+            language: "markdown",
+            role: "instructions",
+          },
+          {
+            path: ".pi/extensions/kubectl-guard.ts",
+            title: "Permissions (.pi/extensions/kubectl-guard.ts)",
+            language: "typescript",
+            role: "permissions",
+          },
+          {
+            path: ".pi/settings.json",
+            title: "Settings (.pi/settings.json)",
+            language: "json",
+            role: "settings",
+          },
+          {
+            path: ".pi/prompts/build-cluster-map.md",
+            title: "Command (/build-cluster-map)",
+            language: "markdown",
+            role: "command",
+          },
+        ],
+        resetPaths: [".pi/extensions/kubectl-guard.ts", ".pi/settings.json", ".pi/prompts/build-cluster-map.md"],
+        artifactSources: [{ kind: "skill", roots: [".pi/skills", ".agents/skills"], layout: "skill-dir" }],
+      },
     ]);
+  });
+
+  // Pi is the first provider whose guardrail cannot be declarative. It ships no
+  // permission file, no approval policy and no sandbox — "built-in tools ... run
+  // with the permissions of the pi process. This is intentional" — and its only
+  // blocking pre-execution interceptor is an extension's `tool_call` hook. So
+  // the file in the `permissions` role is executable TypeScript, which nothing
+  // else in the registry is, and which the Monaco language map has to know
+  // about.
+  it("gives Pi an executable permissions file, because Pi has no declarative one", () => {
+    const pi = getAgentBridgeProvider("pi");
+    const permissions = pi.editors.find(({ role }) => role === "permissions");
+
+    expect(permissions?.path).toBe(".pi/extensions/kubectl-guard.ts");
+    expect(permissions?.language).toBe("typescript");
+
+    // And it is reset like every other managed guardrail: a syntax error in it
+    // stops Pi from starting, so Reset is the documented recovery path.
+    expect(pi.resetPaths).toContain(".pi/extensions/kubectl-guard.ts");
+  });
+
+  // Every other provider expresses permissions and settings in one file; Pi
+  // cannot, because `defaultTools`/`sessionDir` are JSON settings while the
+  // guard must be executable. Four editors and three reset paths are therefore
+  // correct for Pi and a mistake for anyone else — asserted here so the shape
+  // is a decision on the record rather than an accident.
+  it("splits permissions from settings only for Pi", () => {
+    for (const provider of agentBridgeProviders) {
+      const roles = provider.editors.map(({ role }) => role);
+      const expected =
+        provider.id === "pi"
+          ? ["instructions", "permissions", "settings", "command"]
+          : roles.includes("permissions")
+            ? ["instructions", "permissions", "command"]
+            : ["instructions", "settings", "command"];
+
+      expect(roles, provider.id).toEqual(expected);
+    }
   });
 
   // Codex is the only provider that needs launch flags, and both of them are
@@ -203,9 +300,20 @@ describe("agentBridgeProviders", () => {
     }
   });
 
-  it("declares a skill and an agent artifact source for every provider", () => {
+  // Skills are universal — every one of these CLIs implements the Agent Skills
+  // directory standard. Sub-agents are not: Pi ships none by design ("No
+  // sub-agents. There's many ways to do this. Spawn pi instances via tmux, or
+  // build your own with extensions"), and third-party packages that add them
+  // agree on no directory. An `agent` source declared anyway would scan a path
+  // nothing ever writes and report an authoritative "0 agents" forever, which
+  // reads as a broken scan rather than an absent feature. So the kind is
+  // optional — but when it is present it is still second and still a flat-file
+  // layout.
+  it("declares a skill source for every provider and an agent source where the CLI has one", () => {
     for (const provider of agentBridgeProviders) {
-      expect(provider.artifactSources.map(({ kind }) => kind)).toEqual(["skill", "agent"]);
+      const kinds = provider.artifactSources.map(({ kind }) => kind);
+
+      expect(kinds, provider.id).toEqual(provider.id === "pi" ? ["skill"] : ["skill", "agent"]);
     }
   });
 
@@ -245,10 +353,7 @@ describe("agentBridgeProviders", () => {
   // markdown with frontmatter everywhere except Codex, whose subagents are TOML.
   it("uses the skill-dir layout for skills and a flat-file layout for agents", () => {
     for (const provider of agentBridgeProviders) {
-      for (const source of provider.artifactSources) {
-        if (source.kind === "skill") expect(source.layout).toBe("skill-dir");
-        else expect(["markdown", "toml-file"]).toContain(source.layout);
-      }
+      expect(artifactSourceProblems(provider), provider.id).toEqual([]);
     }
   });
 
@@ -256,8 +361,51 @@ describe("agentBridgeProviders", () => {
     for (const provider of agentBridgeProviders) {
       const agents = provider.artifactSources.find(({ kind }) => kind === "agent");
 
-      expect(agents?.layout).toBe(provider.id === "codex" ? "toml-file" : "markdown");
+      // Pi declares no agent source at all; every provider that declares one
+      // still has to name the format its CLI actually writes.
+      if (!agents) {
+        expect(provider.id).toBe("pi");
+        continue;
+      }
+
+      expect(agents.layout).toBe(provider.id === "codex" ? "toml-file" : "markdown");
     }
+  });
+
+  // Making the agent kind optional must not turn the rule into "anything goes".
+  // The same predicate the registry is held to is run against deliberately
+  // malformed providers, because a relaxation that accepts everything is worse
+  // than the constraint it replaced.
+  it("still rejects malformed artifact sources", () => {
+    expect(artifactSourceProblems(agentBridgeProviders[4])).toEqual([]);
+
+    expect(
+      artifactSourceProblems({
+        id: "agent-source-with-a-skill-layout",
+        artifactSources: [
+          { kind: "skill", roots: [".x/skills"], layout: "skill-dir" },
+          { kind: "agent", roots: [".x/agents"], layout: "skill-dir" },
+        ],
+      }),
+    ).toEqual(["agent source uses layout skill-dir"]);
+
+    expect(
+      artifactSourceProblems({
+        id: "no-skill-source",
+        artifactSources: [{ kind: "agent", roots: [".x/agents"], layout: "markdown" }],
+      }),
+    ).toEqual(["first artifact source must be the skill source"]);
+
+    expect(
+      artifactSourceProblems({
+        id: "two-agent-sources",
+        artifactSources: [
+          { kind: "skill", roots: [".x/skills"], layout: "skill-dir" },
+          { kind: "agent", roots: [".x/agents"], layout: "markdown" },
+          { kind: "agent", roots: [".x/subagents"], layout: "markdown" },
+        ],
+      }),
+    ).toEqual(["expected a skill source optionally followed by one agent source"]);
   });
 
   it("rejects unknown providers", () => {

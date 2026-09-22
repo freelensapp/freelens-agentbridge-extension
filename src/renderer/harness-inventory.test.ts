@@ -87,6 +87,21 @@ describe("summarizeInventory", () => {
     });
   });
 
+  // A scan builds one group per declared artifact source, so Pi — which has no
+  // sub-agents and therefore declares no agent source — produces a result with
+  // the agent kind *absent* rather than present-and-zero. Every other provider
+  // has always produced both, so this path had no real caller until Pi.
+  it("renders a provider that declares no agent source at all", () => {
+    const groups = [buildArtifactGroup("skill", [artifact("ns-map-default", NOW - 60_000)])];
+
+    expect(summarizeInventory(groups, NOW)).toEqual({
+      chips: [{ kind: "skill", label: "1 skill", count: 1, truncated: false }],
+      totalCount: 1,
+      ageLabel: "1m ago",
+    });
+    expect(totalLabel(groups)).toBe("1");
+  });
+
   it("returns no chips and no age for a completely empty inventory", () => {
     expect(summarizeInventory([buildArtifactGroup("skill", []), buildArtifactGroup("agent", [])], NOW)).toEqual({
       chips: [],

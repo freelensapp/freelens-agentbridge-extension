@@ -55,4 +55,15 @@ describe("README", () => {
     // claim appeared twice, in the feature list and in "How it works".
     expect(readme).not.toMatch(/only the managed (permission|settings) file/i);
   });
+
+  // The drift above then recurred in the other direction: "the two managed
+  // files" was correct for four providers and wrong for the fifth, and it would
+  // have passed every assertion here while telling the user Reset destroys
+  // fewer files than it does. Prose is not allowed to know the count at all —
+  // the per-provider list below the paragraph carries the exact paths, and the
+  // registry is the only source of truth for how many there are.
+  it("never hardcodes how many files Reset destroys", () => {
+    expect(readme).not.toMatch(/\b(one|two|three|four|five|\d+)\s+managed\b/i);
+    expect(resetSection()).not.toMatch(/\bboth\s+(files|of them)\b/i);
+  });
 });
