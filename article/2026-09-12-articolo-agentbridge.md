@@ -1,9 +1,6 @@
 # Non è che scrive kubectl più veloce di te (anche se lo fa)
 
-*Una giornata di lavoro su Kubernetes con un agent AI dentro Freelens.*
-
-> Non ho alcun coinvolgimento nel progetto Freelens né nell'estensione di cui si
-> parla qui: è solo software che uso.
+*Una giornata di lavoro su Kubernetes con il tuo AI agent dentro Freelens.*
 
 ![placeholder: sidebar di Freelens con AgentBridge e una sessione aperta](TODO-immagine-1.png)
 
@@ -13,99 +10,78 @@ Alert alle 9:40: un servizio della pipeline documentale ha smesso di processare 
 
 Prima di fare qualcosa di utile devi rispondere a quattro domande che non
 parlano di Kubernetes: quale cluster, quale namespace, chi chiama chi in quella
-pipeline, e cosa avevi già scoperto l'ultima volta. Le prime tre risposte le hai in
-testa, la quarta è sepolta in un thread Slack di tre mesi fa.
+pipeline, e cosa ti ricordi dell'ultima volta che quella pipeline si è rotta. Le prime tre risposte le hai in
+testa, la quarta è sepolta in un chat Teams di tre mesi fa.
 
-I comandi sono l'ultima parte del problema. Il contesto è quello che costa davvero,
-e lo paghi ogni volta da zero.
+I comandi in questo caso (e nella maggior parte direi) sono l'ultima parte del problema. 
+Quello che costa davvero è il contesto.
 
-Un agent AI che sa scrivere `kubectl` ti fa risparmiare la parte piccola. Un
-agent che parte già sapendo dove si trova ti fa risparmiare il resto. Tutta la
-differenza tra un terminale con un'AI dentro e un ambiente di lavoro in cui
-l'AI ha memoria sta lì.
+Un agente che sa scrivere `kubectl` ti fa risparmiare la parte piccola. Un
+agente che parte già sapendo dove si trova, cosa è successo 3 mesi fa e quali sono i problemi comuni del cluster
+ti fa risparmiare il resto; questa è la differenza tra un terminale con un'AI dentro e un ambiente di lavoro 
+in cui l'AI ha memoria, contesto e visibilità sull'ambiente (ormai lo chiamiamo harness o agent workspace).
 
-## Cos'è un agent workspace
+## Due parole su cos'è un agent workspace
 
 Un terminale con un coding agent dentro è senza stato: apri, chiedi, chiudi, e la
 volta dopo riparti da zero. La memoria del contesto resta tutta tua.
 
-Un *agent workspace* è l'opposto: una directory di lavoro dedicata dove
-l'agente vive. Dentro c'è tutto il suo harness, cioè l'insieme di cose che gli
-dicono come comportarsi, cosa sa e cosa può fare. I nomi dei file cambiano da
-provider a provider, i livelli restano gli stessi:
+Un *agent harness* è l'opposto: lanci il tuo agent all'interno di una folder; 
+dentro c'è tutto il suo harness, cioè l'insieme di cose che gli
+dicono come comportarsi, cosa sa e cosa può fare. L'harness è tutto l'insieme di artefatti, files,
+software e tools che vivono "attorno" al tuo agente, ti elenco alcuni componenti che potresti avere nel tuo harness:
 
-- **Hot memory.** Il file di istruzioni letto a ogni inizio sessione —
+- **Hot memory.** Il file di istruzioni letto a ogni inizio sessione:
   `AGENTS.md`, `CLAUDE.md`, `copilot-instructions.md`. Regole stabili,
-  convenzioni, avvertenze. Deve restare corto: è sempre nel contesto, e lo paghi
-  a ogni messaggio.
+  convenzioni, avvertenze. Deve restare corto perchè sempre nel contesto.
 - **Permessi.** Il file che dice cosa l'agente può fare senza chiedere: quali
   comandi passano da soli, quali si fermano in attesa di un sì. È il confine tra
-  autonomia e controllo, ed è uno dei file che AgentBridge ti prepara in
-  anticipo.
-- **Memoria a lungo termine.** Documenti, note, diagrammi, una wiki tenuta
-  aggiornata dall'agente stesso: tutto ciò che non entra nella memoria calda e
-  che l'agente apre quando ne ha bisogno. È lo spazio in cui un'esplorazione
-  diventa un appunto che resta.
+  autonomia e controllo (spoiler: è uno dei file che AgentBridge ti prepara in
+  anticipo).
+- **Memoria a lungo termine.** Documenti, note, diagrammi, LLM Wiki: tutto ciò che non entra nella hot memory e
+  che l'agente rispolvera quando ne ha bisogno.
 - **Memoria operativa.** Le skill: procedure con un nome e una descrizione, che
-  l'agente richiama quando la situazione lo richiede. Una mappa del namespace, un
-  runbook di troubleshooting, una checklist di upgrade. È il livello che
-  trasforma un giro fatto una volta in un gesto riusabile.
-- **Agenti e subagent.** Definizioni di agenti specializzati — con strumenti e
-  istruzioni propri — e la possibilità di lanciarne più in parallelo sullo
-  stesso compito.
-- **Estensioni varie.** Server MCP, plugin, hook: strumenti extra e
-  automazioni, quando il CLI le supporta. Non sono l'essenziale, ma è lì che
-  un harness cresce davvero.
+  l'agente richiama quando la situazione lo richiede. Una mappa del namespace k8s, un
+  runbook di troubleshooting, una checklist di upgrade.
+- **Agenti e subagent custom.** Definizioni di agenti specializzati con strumenti ed
+  istruzioni.
+- **Estensioni varie.** Server MCP, plugin, hook, script eseguibili, programmi CLI ...
 
-Questa organizzazione ha un nome, comparso all'inizio del 2026: *harness
-engineering*. La formula che circola è `Agent = Model + Harness`, e il
-workspace è la parte di harness che possiedi tu — quello che Birgitta
-Böckeler chiama [outer
-harness](https://martinfowler.com/articles/harness-engineering.html), distinto
-da quello che ogni CLI porta già con sé. La tassonomia qui sopra è la stessa
-che trovi in
-[letteratura](https://www.langchain.com/blog/the-anatomy-of-an-agent-harness),
-solo riorganizzata attorno a come si usa un cluster.
+La formula che circola è `Agent = Model + Harness`, e il
+workspace è la parte di harness che possiedi tu ([outer harness](https://martinfowler.com/articles/harness-engineering.html)), 
+perchè si, di solito i coding agent CLI portano già con sé una parte di harness. 
+La tassonomia qui sopra è la stessa che trovi in [letteratura](https://www.langchain.com/blog/the-anatomy-of-an-agent-harness),
+solo riorganizzata attorno a come si usa un cluster k8s.
 
-La composizione, in un colpo d'occhio:
-
-```mermaid
-flowchart LR
-    kube["kubeconfig"] -.-> cli["CLI del provider"]
-    cli --> ws
-    subgraph ws["agent workspace"]
-        direction TB
-        hot["istruzioni"] ~~~ perm["permessi"] ~~~ ltm["note e documenti"] ~~~ skill["skill"] ~~~ sub["subagent"] ~~~ ext["MCP · plugin · hook"]
-    end
-```
+L'harness di Freelens AgentBridge:
+[freelens-agentbridge-harness](freelens-agentbridge-harness.png)
 
 ## Cosa ci mette AgentBridge
 
 [AgentBridge](https://github.com/freelensapp/freelens-agentbridge-extension) è
-un'estensione di [Freelens](https://freelens.app) che **ti costruisce l'agent workspace al posto tuo**.
-Apri un cluster, scegli il provider — OpenCode, Claude
-Code, GitHub Copilot CLI o OpenAI Codex CLI — e avvii la sessione in una tab
-del terminale agganciata a Freelens. Quando il prompt appare, tre cose sono già
-a posto: `KUBECONFIG` punta al cluster che hai aperto, la directory di lavoro
-è `<userData>/agentbridge-sessions/<cluster-id>/<provider-id>/`, e dentro trovi
-già un file di istruzioni e un file di permessi, nel formato che il provider
-si aspetta.
+un'estensione di [Freelens](https://freelens.app) che **ti costruisce l'agent harness al posto tuo** per il tuo agente che hai già installato sul tuo PC.
+Apri un cluster in Freelens, scegli il tuo agente AI di fiducia (OpenCode, Claude
+Code, Copilot CLI o Codex o la qualunque) e avvii la sessione in una tab
+del terminale agganciata a Freelens. Quando il tuo agente si avvia, tre cose sono già
+a posto: 
+- un `KUBECONFIG` che punta al cluster che hai aperto
+- una directory di lavoro (una folder nel tuo PC che potrai alla bisogna ispezionare) che 
+dentro conterrà già una memoria (AGENTS.md), un file di permessi ed un comando preimpostati 
+(esatto, è un agent harness basico da customizzare).
 
-Il seeding non è distruttivo: quello che scrivi tu sopravvive agli
-aggiornamenti, e i tre file gestiti — istruzioni, permessi, comando — si
-modificano da un editor dentro Freelens. Il resto dell'harness lo riempi
-lavorando: la memoria a lungo termine, le skill e gli agenti custom nascono
-dalle sessioni, oppure li aggiungi tu a mano, perché la directory resta una
-directory normale.
+Da questo momento in poi, questa cartella rappresenta tutto quello che il tuo agente conosce e che può fare sul tuo cluster;
+i tre file forniti dall'estensione (AGENTS.md/CLAUDE.md, file di permessi e comando) si
+modificano da un editor in Freelens. Il resto dell'harness lo riempi
+lavorando: la memoria a lungo termine che l'agente si costruirà, LLM Wiki con la documentazione funzionale dei servizi del cluster, 
+le skill per le procedure di troubleshooting, gli agenti custom e gli MCP servers. 
+La directory resta una directory normale sulla tua macchina, ma se ci lanci un agente AI all'interno si trasforma in un agent workspace 
+e se lo lanci da Freelens con KUBECONFIG iniettato ancora meglio..
 
 Il workspace è persistente e separato per ogni coppia cluster+provider. Quello
 che l'agente impara su produzione non finisce nel contesto di staging, e la
 mappa che costruisce oggi è ancora lì lunedì prossimo.
 
-Un'ultima nota: OpenCode, uno dei provider, è anche uno degli 11 harness
-passati al setaccio in [questo studio sul loro codice
-sorgente](https://arxiv.org/abs/2609.00006) — utile se vuoi capire cosa c'è
-sotto.
+## todo screen di agentbridge con editor dell'harness
 
 ## Quanta autonomia hai davvero
 
