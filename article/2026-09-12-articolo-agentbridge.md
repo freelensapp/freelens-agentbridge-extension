@@ -83,79 +83,94 @@ mappa che costruisce oggi è ancora lì lunedì prossimo.
 
 ## todo screen di agentbridge con editor dell'harness
 
-## Quanta autonomia hai davvero
+## Trade-off autonomia - sicurezza
 
-La domanda interessante viene dopo: quanta strada fa l'agent prima di doverti
-chiedere qualcosa?
+Quanta strada fa l'agent prima di doverti chiedere qualcosa?
+Con il profilo di default, le letture passano da sole: `get`, `describe`, `logs`, `explain`, 
+`api-resources`, `auth can-i`, `top`, `version`, più le letture `helm`. 
+Tutto il resto, quindi `apply`, `patch`, `delete`, `scale`, `exec`, si ferma e chiede conferma. 
+L'analisi è autonoma, la modifica ha un gate.
 
-Con il profilo di default, le letture passano da sole: `get`, `describe`,
-`logs`, `explain`, `api-resources`, `auth can-i`, `top`, `version`, più le
-letture `helm`. Tutto il resto — `apply`, `patch`, `delete`, `scale`, `exec` —
-si ferma e chiede. In pratica: l'analisi è autonoma, la modifica ha un gate.
+Il gate risiede nell'harness stesso: per OpenCode, ad esempio, 
+è un file di permessi nel workspace, configurabile anche per singolo cluster. 
+Senza scendere nei dettagli specifici del singolo coding agent, il concetto di alto 
+livello è che possiamo nativamente, con la maggior parte degli agent supportati, permettere 
+o farci chiedere conferma per i comandi che decidiamo di tenere sotto controllo.
+Facciamo un esempio così ci capiamo meglio. 
+OpenCode codifica i permessi dell'agente nel file `.opencode/opencode.json`, e per il mio cluster `prod-eu-1` ho:
 
-Il gate sta nel file dei permessi del workspace ed è per cluster. Su produzione
-lo tieni stretto, su un cluster kind puoi allargarlo quanto vuoi, su staging
-puoi permettere `rollout restart` senza permettere `delete`. È il punto dove
-decidi tu il grado di autonomia, invece di subirlo. La modifica si fa
-dall'editor e vale dalla sessione successiva.
+`[prod-permission](prod-permission.jpg)`
 
-Sopra tutto questo c'è il confine che conta davvero: l'RBAC del kubeconfig che
-Freelens passa all'agent. Non potrà mai fare più di quanto puoi fare tu.
+Qui i comandi di sola lettura (`get`, `describe`, `logs`, `explain`, ...) sono in `allow`: 
+l'agente li esegue senza fermarsi. Il wildcard `"*": "ask"` copre tutto il resto, 
+quindi `apply`, `patch`, `delete`, `scale`, `exec`, e per qualsiasi comando fuori da quella 
+lista l'agente si ferma e chiede conferma prima di procedere. Le regole vengono valutate in 
+ordine e l'ultima che matcha vince, quindi l'ordine delle chiavi nel file conta: le regole più 
+specifiche vanno prima del wildcard generico.
 
-Quanto lavoro scorre dietro un gate che non chiede? Prendi il comando di
-mappatura che vedi tra poco: un subagent per namespace, fino a cinque in
-parallelo, e decine di comandi di lettura incatenati tra loro. Il gate resta
-su un solo gesto, quello che cambia lo stato.
+Per l'ambiente di staging/sviluppo invece possiamo essere più permissivi, e consentire che 
+l'agent tiri giù qualche pod da solo:
 
-Il resto dell'articolo racconta una giornata. Cluster `prod-eu-1` e `staging-eu-1`,
-namespace `docpipe`, una pipeline che prende PDF e li rende cercabili:
-`upload-api`, `ocr-worker`, `doc-store`, `indexer`, `callback-dispatcher`,
-`search-api`. Nella giornata uso OpenCode; con gli altri provider cambiano i
-nomi dei file e i meccanismi di approvazione, non l'idea di fondo.
+`[staging-permission](staging-permission.jpg)`
 
-## Mattina — un cluster che non hai mai visto
+Rispetto a prod, qui alcune operazioni distruttive (ad esempio `delete pod` o `scale`) 
+passano da `ask` ad `allow`: l'agente può eseguirle senza fermarsi. 
+Resta comunque `ask`, o meglio resterebbe buona norma tenerlo così, su operazioni più 
+delicate come `exec` in un container, dato che apre una shell interattiva nel pod.
 
-Sei in `prod-eu-1` da ieri. Freelens ti mostra ventidue deployment in sei
-namespace. Sai i nomi dei servizi, non sai come si parlano tra loro.
+Oggi AgentBridge supporta diversi agent, Claude Code, Copilot CLI, Codex, Pi, e ognuno 
+ha il proprio meccanismo per bloccare o consentire l'esecuzione di comandi, ma il concetto 
+di base resta lo stesso: letture libere, scritture con gate configurabile per contesto.
 
+Sopra tutto questo c'è il confine che conta davvero: l'RBAC del kubeconfig che Freelens passa all'agent. 
+Qualunque cosa scriva il file di permessi dell'harness, l'agente non potrà mai fare più di 
+quanto tu stesso puoi fare con quel kubeconfig.
+
+Il resto dell'articolo racconta una giornata sui cluster `prod-eu-1` e `staging-eu-1`, 
+namespace `docpipe`, con una pipeline che prende PDF e li rende cercabili: `upload-api`, 
+`ocr-worker`, `doc-store`, `indexer`, `callback-dispatcher`, `search-api`. 
+Useremo OpenCode per semplicità; con gli altri agent cambiano i nomi dei file e i meccanismi di 
+approvazione, non l'idea di fondo.
+
+Lo so, lo so.. a questo punto sarebbe utile un mini diagramma architetturale per 
+farti vedere esattamente cosa l'agente si troverà davanti nel namespace docpipe. 
+Niente paura: chiederemo direttamente a OpenCode di generarcelo.
+
+## Mattina - un cluster che non hai mai visto
+
+Sei in `prod-eu-1` da ieri e Freelens ti mostra ventidue deployment in sei namespace. 
+Sai i nomi dei servizi ma non sai come si parlano tra loro.
+
+Prompt:
 ```
 Ricostruisci come funziona la pipeline nel namespace docpipe: chi chiama chi,
 cosa sta in mezzo, dove sono i punti di rottura. Salva la mappa dove la
 ritrovi domani.
 ```
 
-Il comando `/build-cluster-map`, che l'estensione pre-installa nel workspace,
-fa esattamente questo giro, se preferisci non scrivere il prompt a mano. È
-read-only e idempotente: alla seconda esecuzione aggiorna quello che c'è invece
-di duplicarlo.
+**Cosa fa l'agente al posto tuo**
 
-**Cosa ha fatto al posto tuo** — tutto in lettura, già autorizzato nel
-workspace:
+1. Elenca deployment, service, ingress, ConfigMap e code/queue del namespace.
+2. Incrocia i selector dei service con le label dei pod, per capire chi risponde davvero a cosa e non chi *dovrebbe*.
+3. Legge le variabili d'ambiente dei container, che è dove i servizi dichiarano puntamenti.
+4. Guarda le probe e il numero di repliche di ognuno.
+5. Legge i log dei servizi per vedere quali rotte compaiono e con quale frequenza, 
+   magari riesce a raccogliere anche qualche correlation ID per capire meglio il tracing di ogni richiesta.
+6. Scrive il risultato in una skill per namespace e in una skill di cluster, più una breve nota nel file AGENTS.md.
 
-1. Elencato deployment, service, ingress e ConfigMap del namespace.
-2. Incrociato i selector dei service con le label dei pod, per capire chi
-   risponde davvero a cosa e non chi *dovrebbe*.
-3. Letto le variabili d'ambiente dei container, che è dove i servizi dichiarano
-   chi chiamano.
-4. Guardato le probe e il numero di repliche di ognuno.
-5. Sfogliato i log dei servizi per vedere quali rotte compaiono e con quale
-   frequenza, e per raccogliere gli identificativi di correlazione che legano
-   una richiesta all'altra.
-6. Scritto il risultato in una skill per namespace e in una skill di cluster,
-   più un blocco di navigazione corto nel file di istruzioni.
+**L'esito.** 
+La mappa che ne esce non è quella che avresti disegnato tu. 
+Il servizio `indexer`: te lo immagini come colui che indicizza i documenti 
+appena usciti dall'OCR e invece.. è un batch notturno di riconciliazione; 
+l'indicizzazione in tempo reale la fa `search-api` su un endpoint interno.
+Il nome mentiva, come mentono i nomi dopo due anni di refactoring.
 
-**L'esito.** La mappa non è quella che avresti disegnato tu. Il servizio si
-chiama `indexer`, quindi avresti immaginato che indicizzi i documenti appena
-usciti dall'OCR. Invece `indexer` è un batch notturno di riconciliazione;
-l'indicizzazione in tempo reale la fa `search-api` su un endpoint interno. Il
-nome mentiva, come mentono i nomi dopo due anni di refactoring.
-
-Quella mappa non resta in chat: è un file, e assomiglia a questo.
+Quella mappa non resta in chat: è un file che assomiglia a questo:
 
 ```markdown
 ---
 name: ns-map-docpipe
-description: Map of the docpipe namespace in prod-eu-1 — workloads,
+description: Map of the docpipe namespace in prod-eu-1 - workloads,
   services, config, storage, RBAC, risks. Load when working in this namespace.
 ---
 ## Workloads
@@ -163,21 +178,18 @@ description: Map of the docpipe namespace in prod-eu-1 — workloads,
 - ocr-worker (Deployment, 5 replicas) ← queue ocr.jobs (rabbitmq.docpipe:5672)
 - indexer (CronJob, 02:00) → nightly reconciliation, not real-time indexing
 - search-api (Deployment, 2/2) → indexes on write, internal endpoint
+
 ## Config
 - ConfigMap ocr-worker-config: no input size limit (names and keys only)
+
 ## Risks
 - ocr.jobs has no dead-letter queue
 - UPLOAD_HOOK_URL points outside the cluster, unreachable from here
 ```
 
-Da domani ogni domanda su `docpipe` parte già informata: l'agent carica la
-skill quando serve, e il blocco di navigazione risponde a "quale namespace
-contiene X" senza dover esplorare niente.
+Da domani ogni domanda su `docpipe` parte già informata, perché l'agent carica la skill quando serve.
 
-![placeholder: la skill generata per il namespace docpipe](TODO-immagine-2.png)
-
-Nella skill c'è anche il diagramma dell'architettura, ricavato dalle stesse
-letture:
+Nella skill c'è anche il diagramma dell'architettura, ricavato dalle stesse letture:
 
 ```mermaid
 flowchart LR
@@ -195,60 +207,80 @@ flowchart LR
     class queue,ocr,external risk
 ```
 
-## Metà mattina — `ocr-worker` riavvia in loop
+Nota a margine. 
+Il comando /build-cluster-map, che l'estensione pre-installa nel workspace, fa esattamente 
+questo giro su tutto il cluster se preferisci non scrivere il prompt a mano. 
+È read-only e idempotente: alla seconda esecuzione aggiorna quello che c'è invece di duplicarlo. 
+Fa partire uno sciame di agenti in parallelo, uno per namespace, che analizzano ogni 
+componente e riportano tutto all'agente supervisor; 
+il supervisor raccoglie i risultati e produce una skill per namespace più la skill di cluster che li aggrega. 
+In questo modo, quando nelle prossime domande chiediamo qualcosa relativa a un namespace 
+oppure a un pod/deployment specifico, abbiamo già la KB pronta.
 
-Freelens ti mostra cinque pod `ocr-worker`, tre in `CrashLoopBackOff`. I restart
-sono 12, 9, 3, 0, 0. Nessun deploy da ieri. Quindi non sei stato tu a romperlo,
-almeno non oggi.
+## Metà mattina - `ocr-worker` riavvia in loop
+
+Freelens ti mostra cinque pod `ocr-worker`, tre in `CrashLoopBackOff`.
+I restart sono 12, 9, 3, 0, 0. Nessun deploy da ieri.
+Quindi non sei stato tu a romperlo, almeno non oggi.
 
 ```
 I pod ocr-worker nel namespace docpipe riavviano in loop. Capisci perché.
 ```
 
-**Cosa ha fatto al posto tuo** — di nuovo, tutto pre-autorizzato:
+**Cosa ha fatto al posto tuo**
 
-1. Elencato i pod e notato che i restart sono sparpagliati, non uniformi. Se
-   fosse carico generale sarebbero simili.
+1. Elencato i pod e notato che i restart sono sparpagliati, non uniformi.
+   Se fosse uno spike di carico generale sarebbero simili.
 2. Guardato lo stato precedente di ognuno: `OOMKilled`, exit 137.
-3. Letto i log del container precedente su due pod diversi. Entrambi si
+3. Letto i log del container precedente su due pod diversi ed entrambi si
    fermano sulla stessa riga: `processing document doc_84f2c1`.
-4. Scartato l'ipotesi memoria: un worker troppo piccolo morirebbe su documenti
-   diversi, non sempre sullo stesso.
-5. Letto la ConfigMap del worker: nessun limite sulla dimensione dei file in
-   ingresso.
-6. Guardato eventi e profondità della coda: quel messaggio è stato riconsegnato
-   decine di volte.
+4. Scartato l'ipotesi memoria: un worker troppo piccolo morirebbe su documenti diversi, non sempre sullo stesso.
+5. Letto la ConfigMap del worker: nessun limite sulla dimensione dei file in ingresso.
+6. Guardato gli eventi della coda: quel messaggio è stato riconsegnato decine di volte.
 
-**Dove si è fermato.** Propone tre cose: alzare la memoria come patch,
-mettere una guardia sulla dimensione in ingresso, configurare una dead-letter
-queue. Le prime due toccano il deployment, e `kubectl patch` non è nella lista
-dei permessi di questo workspace: si ferma e chiede. Autorizzi solo la patch;
-guardia e dead-letter finiscono in un branch, dove vanno discusse con calma.
+**Dove si è fermato.**
+Propone tre cose: alzare la memoria come patch, mettere una guardia sulla
+dimensione del file in ingresso, e configurare una dead-letter queue.
+
+Le prime due toccano il deployment, e `kubectl patch` non è nella lista dei permessi di questo workspace:
+si ferma e chiede: "Ho intenzione di lanciare questo comando kubectl patch... approvi?"
+Autorizzi solo la patch sulla memoria per sistemare temporaneamente.
 
 La richiesta di approvazione mostra esattamente cosa sta per succedere:
 
 ```
 $ kubectl -n docpipe patch deployment ocr-worker --type=json \
-    -p '[{"op":"replace","path":".../limits/memory","value":"2Gi"}]'
+    -p '[{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"2Gi"}]'
 Allow? [y/N]
 ```
 
-Su questo cluster il gate è al suo posto perché sei tu che l'hai lasciato lì.
-Su `staging-eu-1`, se avessi pre-approvato `kubectl patch` nel profilo di
-quel workspace, lo stesso comando sarebbe passato senza chiedere. Stessa AI, due
-profili di rischio: la differenza l'ha fatta una decisione presa una volta, non
-la disciplina del momento.
-
-**L'esito.** La memoria è il sintomo. Il problema vero è un documento che avvelena la
-coda: un PDF scansionato enorme che ogni worker prende, prova a elaborare, ed
-esaurisce la RAM. La coda non riceve conferma e glielo rispedisce dopo. Il
-loop non gira intorno ai pod, gira intorno a quel messaggio.
+**L'esito.**
+La memoria è il sintomo. Il problema vero è un documento che avvelena la coda:
+un PDF scansionato enorme che ogni worker prende, prova a elaborare, ed esaurisce la RAM.
+La coda non riceve conferma e glielo rispedisce dopo.
+Il loop non gira intorno ai pod, gira intorno a quel messaggio.
 
 Alzare la memoria e chiudere lì, come suggeriva `OOMKilled` alle 9:40, avrebbe
-tenuto in piedi i worker giusto il tempo di masticare quel documento, lasciando
-intatto lo stesso problema per il prossimo file grosso. La differenza l'ha
-fatta il confronto tra i log di due pod invece di uno: è il passaggio che salti
-sempre, quando hai già in testa una risposta plausibile.
+tenuto in piedi i worker giusto il tempo di masticare quel documento,
+lasciando intatto lo stesso problema per il prossimo file grosso.
+
+**Andiamo oltre**
+La patch sulla memoria compra tempo, non risolve niente: 
+il prossimo PDF enorme rimetterà tutto in loop. 
+La repository di `ocr-worker` è clonata in locale, quindi lo step successivo è chiedere all'agente di guardarci dentro:
+
+```
+Il codice di ocr-worker è in ~/repos/docpipe/ocr-worker. Incrocia i log del pod
+con il codice sorgente, trova dove manca il controllo sulla dimensione del file
+in ingresso e proponi una fix.
+```
+
+L'agente incrocia la riga di log dove il worker si blocca con il punto del codice che la 
+genera, individua il file giusto (quello che legge il PDF e lo passa al 
+motore OCR senza controllare la dimensione), e fa partire un subagent dedicato: 
+pianifica la fix, la scrive, la verifica con i test esistenti e la pusha su un branch dedicato. 
+
+Non tocca `main`: quel branch aspetta una revisione umana prima di finire in produzione.
 
 ![placeholder: l'agent chiede l'approvazione per la patch](TODO-immagine-3.png)
 
