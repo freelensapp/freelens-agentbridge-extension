@@ -474,6 +474,10 @@ do more against the cluster than the kubeconfig Freelens hands it allows.
 Freelens Extensions page. Full dev setup, build, test, and debugging
 instructions live in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+## Authors
+
+- [@leo-capvano](https://github.com/leo-capvano)
+
 ## License
 
 [MIT](./LICENSE) © 2025-2026 Freelens Authors
