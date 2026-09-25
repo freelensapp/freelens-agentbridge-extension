@@ -10,15 +10,20 @@ import { agentBridgeProviders } from "./common/agentbridge-providers";
 // the source of truth these tests pin the prose to.
 const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 
-// Everything from the "**Reset** removes" paragraph to the next section
-// heading: a path mentioned in some unrelated table does not tell the reader
-// what Reset destroys.
+// The README documents Reset in two pieces: the "**Reset button**" paragraph
+// names the exact table columns it deletes and re-seeds, and the seeded-files
+// table directly above it lists the paths in those columns. A path mentioned
+// elsewhere in the README does not count, so the section spans both.
 function resetSection(): string {
-  const start = readme.indexOf("**Reset** removes");
+  const start = readme.indexOf("| Provider");
 
   expect(start).toBeGreaterThan(-1);
 
-  const end = readme.indexOf("\n## ", start);
+  const resetParagraph = readme.indexOf("**Reset button** deletes and re-seeds");
+
+  expect(resetParagraph).toBeGreaterThan(start);
+
+  const end = readme.indexOf("\n## ", resetParagraph);
 
   return readme.slice(start, end === -1 ? undefined : end);
 }
