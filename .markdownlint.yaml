@@ -2,7 +2,10 @@
 extends: markdownlint/style/prettier
 # First line in a file should be a top-level heading
 MD041: false
-# Allow the <video> element used for embedded demos in README.md
+# Allow the <video> element used for embedded demos in README.md, and the
+# <details>/<summary> elements used to collapse provider sections.
 MD033:
   allowed_elements:
     - video
+    - details
+    - summary

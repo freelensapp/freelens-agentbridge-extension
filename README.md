@@ -164,7 +164,7 @@ files. Seeding only ever creates files that are absent — an existing file is
 left exactly as you last edited it.
 
 | Provider           | Instructions                      | Permissions / settings                                 | Command / skill                             |
-| ------------------ | ---------------------------------- | -------------------------------------------------------- | ---------------------------------------------- |
+| ------------------ | --------------------------------- | ------------------------------------------------------ | ------------------------------------------- |
 | OpenCode           | `AGENTS.md`                       | `.opencode/opencode.json`                              | `.opencode/command/build-cluster-map.md`    |
 | Claude Code        | `CLAUDE.md`                       | `.claude/settings.json`                                | `.claude/commands/build-cluster-map.md`     |
 | GitHub Copilot CLI | `.github/copilot-instructions.md` | `.github/copilot/settings.json`                        | `.github/skills/build-cluster-map/SKILL.md` |
