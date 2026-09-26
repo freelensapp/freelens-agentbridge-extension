@@ -137,7 +137,7 @@ limits, and proposes a fix. Because `kubectl apply`, `kubectl edit`, and
 `kubectl patch` aren't in the allow-list, the agent asks before running the
 mutation — you approve it, and it verifies the rollout and reports back.
 
-<video src="https://github.com/user-attachments/assets/12e1571c-4ac2-42cc-82fb-cd6d5d245213" controls width="600"></video>
+<img width="800" height="450" alt="demo1" src="https://github.com/user-attachments/assets/300941d7-c82e-466d-ac19-690adb732d96" />
 
 *Demo: the agent fixes a deployment's memory limit that was causing pod
 restarts.*
@@ -423,7 +423,7 @@ than the kubeconfig Freelens hands it allows.
 
 The agent fixes a missing secret that crashes the pod:
 
-<video src="https://github.com/user-attachments/assets/3e404238-8e21-4363-ad9f-783a9bd41790" controls width="600"></video>
+<img width="800" height="450" alt="demo2" src="https://github.com/user-attachments/assets/8fd8e8c4-87fd-4d24-85c7-c39a88f9a8c5" />
 
 ## Build from the source
 
