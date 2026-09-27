@@ -433,7 +433,7 @@ instructions live in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Articles
 
-[Kubernetes AI Engineering](https://leopoldocapuano.substack.com/p/kubernetes-ai-engineering-is-a-context?r=6laezn&utm_medium=ios)
+[Kubernetes AI Engineering using AgentBridge extension](https://leopoldocapuano.substack.com/p/kubernetes-ai-engineering-is-a-context?r=6laezn&utm_medium=ios)
 
 ## Authors
 
