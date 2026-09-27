@@ -431,6 +431,10 @@ The agent fixes a missing secret that crashes the pod:
 Freelens Extensions page. Full dev setup, build, test, and debugging
 instructions live in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+## Articles
+
+[Kubernetes AI Engineering](https://leopoldocapuano.substack.com/p/kubernetes-ai-engineering-is-a-context?r=6laezn&utm_medium=ios)
+
 ## Authors
 
 - [@leo-capvano](https://github.com/leo-capvano)
