@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024"],
+    // `vite/types/importMeta` declares `import.meta.glob`, which embeds the
+    // scaffolds into the bundle (see scaffold-source.ts). It is a global
+    // augmentation of `ImportMeta` with no DOM in it.
+    "types": ["node", "vite/types/importMeta"]
+  },
+  "include": ["./**/*", "../common/**/*"],
+  // Scaffolds are data the extension seeds into a workspace verbatim, not
+  // project source. Pi's guardrail is a `.ts` file that imports types from
+  // `@earendil-works/pi-coding-agent`, a package this repository must not
+  // depend on, and which only exists on the machine running the agent.
+  "exclude": ["../**/*.test.ts", "../**/*.test.tsx", "./scaffolds/**"]
+}
