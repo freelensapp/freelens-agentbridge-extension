@@ -5,7 +5,7 @@
     // `vite/types/importMeta` declares `import.meta.glob`, which embeds the
     // scaffolds into the bundle (see scaffold-source.ts). It is a global
     // augmentation of `ImportMeta` with no DOM in it.
-    "types": ["node", "vite/types/importMeta"]
+    "types": ["node", "vite/types/importMeta.d.ts"]
   },
   "include": ["./**/*", "../common/**/*"],
   // Scaffolds are data the extension seeds into a workspace verbatim, not
