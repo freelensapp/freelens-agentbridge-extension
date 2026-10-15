@@ -1,15 +1,13 @@
 import { HARNESS_ARTIFACT_KIND_ORDER } from "../common/harness-artifacts";
+import { ipcChannels } from "../common/ipc-channels";
 import { CAPABILITY_KIND_LABEL, defaultIconForKind } from "./capability-hints";
-import { describeStaleMainProcessError, FULL_RESTART_REMEDY } from "./stale-main-process";
 
 import type { HarnessArtifactGroup, HarnessArtifactKind, HarnessInventoryResult } from "../common/harness-artifacts";
-import type { IpcInvoke } from "./provider-selection";
+import type { IpcInvoke } from "../common/ipc-channels";
 
 // React-free view logic for the workspace artifact inventory. Kept separate from
 // harness-artifacts-section.tsx so it is unit-testable in the node test
 // environment, which has no DOM.
-
-const CHANNEL_PREFIX = "agentbridge-extension:";
 
 // Refreshes fire on mount, provider switch, reset, window focus and tab
 // visibility, so several can land at once; anything inside this window after a
@@ -128,17 +126,6 @@ export function opensCoalesceWindow(result: HarnessInventoryResult | undefined):
   return result?.status === "ok";
 }
 
-// Rebuilding or updating while Freelens is open leaves a new renderer talking to
-// the main process bundle loaded at startup, which is missing any channel — or
-// any provider — added since. See stale-main-process.ts for why the renderer
-// cannot recover and can only name the remedy.
-export function describeInventoryError(message: string): string {
-  return describeStaleMainProcessError(
-    message,
-    `Workspace artifacts need a full Freelens restart: this session's main process started before the extension gained the scanner. ${FULL_RESTART_REMEDY}`,
-  );
-}
-
 // Mirrors loadProvider in provider-selection.ts: isCurrent() gates every state
 // transition so a response for a superseded cluster/provider is discarded.
 export async function loadHarnessInventory(
@@ -148,19 +135,12 @@ export async function loadHarnessInventory(
   isCurrent: () => boolean,
 ): Promise<HarnessInventoryResult | undefined> {
   try {
-    const result = (await invoke(
-      `${CHANNEL_PREFIX}list-provider-artifacts`,
-      clusterId,
-      providerId,
-    )) as HarnessInventoryResult;
+    const result = (await invoke(ipcChannels.listProviderArtifacts, clusterId, providerId)) as HarnessInventoryResult;
 
     return isCurrent() ? result : undefined;
   } catch (error) {
     if (!isCurrent()) return undefined;
 
-    return {
-      status: "error",
-      error: describeInventoryError(error instanceof Error ? error.message : String(error)),
-    };
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
   }
 }

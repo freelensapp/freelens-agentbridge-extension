@@ -20,29 +20,25 @@ function getPosixLaunchCommand(workdir: string, command: string): string {
   return `cd "${quotePosixDoubleQuotedLiteral(workdir)}" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" ${command}`;
 }
 
-const launchCommandBuilders: Record<NodeJS.Platform, LaunchCommandBuilder> = {
-  aix: getPosixLaunchCommand,
-  android: getPosixLaunchCommand,
-  cygwin: getPosixLaunchCommand,
-  darwin: getPosixLaunchCommand,
-  freebsd: getPosixLaunchCommand,
-  haiku: getPosixLaunchCommand,
-  linux: getPosixLaunchCommand,
-  netbsd: getPosixLaunchCommand,
-  openbsd: getPosixLaunchCommand,
-  sunos: getPosixLaunchCommand,
-  win32: getWindowsLaunchCommand,
+// The shell Freelens opens in its terminal: PowerShell on Windows, a POSIX shell
+// everywhere else. The renderer has no `process.platform`; the page reads
+// `Common.App.isWindows`.
+export type LaunchShell = "posix" | "windows";
+
+const launchCommandBuilders: Record<LaunchShell, LaunchCommandBuilder> = {
+  posix: getPosixLaunchCommand,
+  windows: getWindowsLaunchCommand,
 };
 
 // Builds the shell command that boots the provider CLI in its workspace with an
 // inherited KUBECONFIG/PATH. The session is plain interactive — the user drives
 // it, including running the bundled cluster-map command themselves.
-export function buildLaunchCommand(workdir: string, provider: AgentBridgeProvider, platform: NodeJS.Platform): string {
+export function buildLaunchCommand(workdir: string, provider: AgentBridgeProvider, shell: LaunchShell): string {
   const parts = [provider.executable, ...provider.launchArgs];
 
-  return launchCommandBuilders[platform](workdir, parts.join(" "));
+  return launchCommandBuilders[shell](workdir, parts.join(" "));
 }
 
-export function getLaunchCommand(workdir: string, providerId: string, platform: NodeJS.Platform): string {
-  return buildLaunchCommand(workdir, getAgentBridgeProvider(providerId), platform);
+export function getLaunchCommand(workdir: string, providerId: string, shell: LaunchShell): string {
+  return buildLaunchCommand(workdir, getAgentBridgeProvider(providerId), shell);
 }

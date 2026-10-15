@@ -1,11 +1,12 @@
-import { Renderer } from "@freelensapp/extensions";
-import { ipcRenderer } from "electron";
+import { Common, Renderer } from "@freelensapp/extensions";
 import { observer } from "mobx-react";
 import { useEffect, useRef, useState } from "react";
 import { agentBridgeProviders, getAgentBridgeProvider } from "../common/agentbridge-providers";
+import { ipcChannels } from "../common/ipc-channels";
 import { CapabilitiesSection } from "./capabilities-section";
 import { HarnessArtifactsSection, HarnessInventoryChips } from "./harness-artifacts-section";
 import { loadHarnessInventory, opensCoalesceWindow, shouldRefresh, summarizeInventory } from "./harness-inventory";
+import { invoke } from "./ipc";
 import { launchProviderSession } from "./launch-session";
 import { ProviderFileEditor } from "./provider-file-editor";
 import { loadProvider, loadSelectedProvider, saveSelectedProvider } from "./provider-selection";
@@ -15,15 +16,9 @@ import type { AgentBridgeProviderId } from "../common/agentbridge-providers";
 import type { HarnessInventoryResult } from "../common/harness-artifacts";
 import type { ProviderLoadResult } from "./provider-selection";
 
-const CHANNEL_PREFIX = "agentbridge-extension:";
-
 type PageState = { status: "idle" | "loading" } | ProviderLoadResult;
 
-interface AgentBridgePageProps {
-  extension: Renderer.LensExtension;
-}
-
-export const AgentBridgePage = observer(function AgentBridgePage({ extension: _extension }: AgentBridgePageProps) {
+export const AgentBridgePage = observer(function AgentBridgePage() {
   const clusterId = Renderer.Catalog.getActiveCluster()?.id;
   const [selection, setSelection] = useState<{ clusterId?: string; providerId?: AgentBridgeProviderId }>(() => ({
     clusterId,
@@ -59,7 +54,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     void loadProvider(
       clusterId,
       providerId,
-      ipcRenderer.invoke,
+      invoke,
       () =>
         generation.current === request &&
         currentRequest.current.clusterId === clusterId &&
@@ -129,7 +124,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     void loadHarnessInventory(
       clusterId,
       providerId,
-      ipcRenderer.invoke,
+      invoke,
       () =>
         inventoryRequest.current === request &&
         currentRequest.current.clusterId === clusterId &&
@@ -202,15 +197,19 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     launchProviderSession(createRendererLaunchDeps(), {
       workdir: state.workdir,
       providerId: provider.id,
-      platform: process.platform,
+      shell: Common.App.isWindows ? "windows" : "posix",
       title: `${provider.name} Session`,
       onSettled: () => setLaunching(false),
+    }).catch((error: unknown) => {
+      Renderer.Component.Notifications.error(
+        `Opening the ${provider.name} session failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     });
   }
 
   async function reveal() {
     if (!clusterId || !provider) return;
-    const result = (await ipcRenderer.invoke(`${CHANNEL_PREFIX}reveal-workspace`, clusterId, provider.id)) as {
+    const result = (await invoke(ipcChannels.revealWorkspace, clusterId, provider.id)) as {
       ok: boolean;
       error?: string;
     };
@@ -220,7 +219,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
 
   async function openInEditor() {
     if (!clusterId || !provider) return;
-    const result = (await ipcRenderer.invoke(`${CHANNEL_PREFIX}open-in-editor`, clusterId, provider.id)) as {
+    const result = (await invoke(ipcChannels.openInEditor, clusterId, provider.id)) as {
       ok: boolean;
       error?: string;
     };
@@ -237,7 +236,7 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     });
 
     if (!ok) return;
-    const result = (await ipcRenderer.invoke(`${CHANNEL_PREFIX}reset-provider`, clusterId, provider.id)) as {
+    const result = (await invoke(ipcChannels.resetProvider, clusterId, provider.id)) as {
       ok: boolean;
       error?: string;
     };

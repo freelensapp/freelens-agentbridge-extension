@@ -1,73 +1,66 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { launchProviderSession } from "./launch-session";
 
-import type { LaunchSessionDeps, TerminalApiLike } from "./launch-session";
+import type { LaunchSessionDeps } from "./launch-session";
 
-function createDeps(api: TerminalApiLike | undefined) {
-  const sendCommand = vi.fn();
+function createDeps(sendCommand: LaunchSessionDeps["sendCommand"] = vi.fn(async () => {})) {
   const deps: LaunchSessionDeps = {
     createTerminalTab: vi.fn(() => ({ id: "tab-1" })),
-    getTerminalApi: vi.fn(() => api),
     sendCommand,
   };
-  return { deps, sendCommand };
+  return { deps, sendCommand: vi.mocked(sendCommand) };
 }
 
 describe("launchProviderSession", () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  it("sends the boot command once the terminal is ready", () => {
-    const { deps, sendCommand } = createDeps({ isReady: true });
+  it("opens a tab with the session title and sends the boot command to it", async () => {
+    const { deps, sendCommand } = createDeps();
     const onSettled = vi.fn();
 
-    launchProviderSession(deps, {
+    await launchProviderSession(deps, {
       workdir: "/w",
       providerId: "claude",
-      platform: "linux",
-      title: "session",
+      shell: "posix",
+      title: "Claude Code Session",
       onSettled,
     });
 
-    vi.advanceTimersByTime(100);
-
+    expect(deps.createTerminalTab).toHaveBeenCalledWith({ title: "Claude Code Session" });
     expect(sendCommand).toHaveBeenCalledTimes(1);
-    expect(sendCommand.mock.calls[0][0]).toContain("claude");
+    expect(sendCommand.mock.calls[0][0]).toMatch(/^cd "\/w" && .* claude/);
     expect(sendCommand.mock.calls[0][1]).toEqual({ tabId: "tab-1", enter: true });
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to the ready timeout when the terminal never reports ready", () => {
-    const { deps, sendCommand } = createDeps(undefined);
+  // The host's sendCommand resolves once the shell is ready and the command is
+  // typed; the button stays busy until then.
+  it("settles only after the host has sent the command", async () => {
+    let finishSending!: () => void;
+    const { deps } = createDeps(() => new Promise<void>((resolve) => (finishSending = resolve)));
+    const onSettled = vi.fn();
 
-    launchProviderSession(deps, {
+    const launched = launchProviderSession(deps, {
       workdir: "/w",
       providerId: "opencode",
-      platform: "linux",
+      shell: "posix",
       title: "session",
-      readyTimeoutMs: 5000,
+      onSettled,
     });
 
-    vi.advanceTimersByTime(4999);
-    expect(sendCommand).not.toHaveBeenCalled();
+    await Promise.resolve();
+    expect(onSettled).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(1);
-    expect(sendCommand).toHaveBeenCalledTimes(1);
+    finishSending();
+    await launched;
+    expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
-  it("sends the boot command only once", () => {
-    const { deps, sendCommand } = createDeps({ isReady: true });
+  it("settles when sending fails, so the button does not stay busy", async () => {
+    const { deps } = createDeps(vi.fn(async () => Promise.reject(new Error("no terminal"))));
+    const onSettled = vi.fn();
 
-    launchProviderSession(deps, {
-      workdir: "/w",
-      providerId: "claude",
-      platform: "linux",
-      title: "session",
-      readyTimeoutMs: 5000,
-    });
-
-    vi.advanceTimersByTime(10_000);
-
-    expect(sendCommand).toHaveBeenCalledTimes(1);
+    await expect(
+      launchProviderSession(deps, { workdir: "/w", providerId: "codex", shell: "windows", title: "s", onSettled }),
+    ).rejects.toThrow("no terminal");
+    expect(onSettled).toHaveBeenCalledTimes(1);
   });
 });

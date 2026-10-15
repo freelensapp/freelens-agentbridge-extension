@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { buildArtifactGroup } from "../common/harness-artifacts";
 import {
   chipLabel,
-  describeInventoryError,
   formatRelativeAge,
   iconForArtifactKind,
   labelForArtifactKind,
@@ -239,50 +238,13 @@ describe("opensCoalesceWindow", () => {
   });
 });
 
-describe("describeInventoryError", () => {
-  // The main process keeps its extension instance for the life of the app, so a
-  // rebuild while Freelens is open leaves a new renderer invoking a channel the
-  // running main process never registered. Electron's raw wording names an
-  // internal channel and no remedy.
-  it("turns a missing IPC handler into the restart instruction", () => {
-    const message = describeInventoryError(
-      "Error invoking remote method 'agentbridge-extension:list-provider-artifacts': Error: No handler registered for 'agentbridge-extension:list-provider-artifacts'",
-    );
-
-    expect(message).toMatch(/restart/i);
-    // The remedy is a full quit: a window reload re-requires only the renderer.
-    expect(message).toMatch(/window reload only updates the UI/);
-    expect(message).not.toMatch(/No handler registered/);
-  });
-
-  // The same stale bundle reached through a channel that *does* exist: the
-  // handler is there, its provider registry is older than the id it was handed.
-  it("turns a provider the main process has never heard of into the restart instruction", () => {
-    const message = describeInventoryError(
-      "Error invoking remote method 'agentbridge-extension:list-provider-artifacts': Error: Unsupported AI CLI provider: codex",
-    );
-
-    expect(message).toMatch(/restart/i);
-    expect(message).not.toMatch(/Unsupported AI CLI provider/);
-  });
-
-  it("leaves every other failure untouched", () => {
-    // Errors the main process reports about the scan itself are already the
-    // most specific thing anyone can say, and rewriting them would hide them.
-    expect(describeInventoryError("EACCES: permission denied, scandir '/x'")).toBe(
-      "EACCES: permission denied, scandir '/x'",
-    );
-    expect(describeInventoryError("Unknown provider: nope")).toBe("Unknown provider: nope");
-  });
-});
-
 describe("loadHarnessInventory", () => {
   it("invokes the inventory channel with the cluster and provider", async () => {
     const invoke = vi.fn().mockResolvedValue({ status: "ok", groups: [] });
 
     await loadHarnessInventory("cluster-1", "claude", invoke, () => true);
 
-    expect(invoke).toHaveBeenCalledWith("agentbridge-extension:list-provider-artifacts", "cluster-1", "claude");
+    expect(invoke).toHaveBeenCalledWith("list-provider-artifacts", "cluster-1", "claude");
   });
 
   it("returns the inventory when the request is still current", async () => {
@@ -305,17 +267,6 @@ describe("loadHarnessInventory", () => {
       status: "error",
       error: "Forbidden path",
     });
-  });
-
-  it("maps a missing handler to the restart instruction", async () => {
-    const invoke = vi
-      .fn()
-      .mockRejectedValue(new Error("No handler registered for 'agentbridge-extension:list-provider-artifacts'"));
-
-    const result = await loadHarnessInventory("cluster-1", "claude", invoke, () => true);
-
-    expect(result?.status).toBe("error");
-    expect(result?.status === "error" && result.error).toMatch(/restart/i);
   });
 
   it("discards a rejection that is no longer current", async () => {
