@@ -50,7 +50,7 @@
 - Main derives `<userData>/agentbridge-sessions/<safe-cluster-id>/<provider-id>/`, verifies real-path containment, and copies missing declared scaffold files.
 - Renderer reads and debounced-writes declared provider files through IPC; main rejects undeclared, absolute, traversal, and escaped paths.
 - Renderer requests the workspace artifact inventory through IPC; main lists registry-declared artifact roots under the verified workdir and returns metadata only, never file contents.
-- Session launch creates Freelens terminal tab, waits for terminal readiness, changes to provider workspace, then runs provider executable.
+- Session launch creates Freelens terminal tab, waits for terminal readiness, changes to provider workspace, then runs provider executable (or the user's per-provider launch command from settings, read via IPC at launch time).
 - Freelens terminal infrastructure supplies active cluster `KUBECONFIG`; extension does not read or modify Kubernetes credentials.
 - Reveal and editor actions cross IPC; main verifies workspace then uses Electron shell or configured editor executable.
 
@@ -66,7 +66,7 @@
 - `AgentBridgeProvider`: registry entry defining executable, probe/launch arguments, docs, editable files, and reset scope.
 - `EditorDefinition`: declared provider file contract containing path, title, syntax, role, and optional scaffold source. `language` is a syntax name (`json`, `markdown`, `toml`, `typescript`), not a Monaco language id; the renderer maps it. Providers declare as many editors as their native layout needs; Pi declares four, because its guardrail hook and its settings are separate files.
 - `ProviderCheckResult` / `ProviderLoadResult`: readiness state passed from process probe through renderer UI.
-- `ExtensionSettings`: normalized probe timeout and external editor command/URI scheme.
+- `ExtensionSettings`: normalized probe timeout, external editor command/URI scheme, and per-provider `launchCommands` (a single-line replacement for `<executable> <launchArgs>` in the boot command; the workspace `cd` and `KUBECONFIG`/`PATH` prefix are always kept).
 - `LaunchSessionDeps`: small adapter boundary between framework-independent launch timing and Freelens terminal APIs.
 - `CapabilityHint`: data-only capability description whose provider-specific invocation controls applicability.
 - `ArtifactSource`: registry entry declaring, per artifact kind, the workspace-relative roots scanned for the inventory and their directory layout. A kind may be omitted when the CLI has no such concept — Pi declares skills only, since it has no sub-agents — and the renderer needs no branch for it, because `summarizeInventory` already keeps only groups with `count > 0`.

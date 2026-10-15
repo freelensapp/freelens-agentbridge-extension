@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type AgentBridgeProvider, agentBridgeProviders } from "../common/agentbridge-providers";
-import { buildLaunchCommand, getLaunchCommand } from "./get-launch-command";
+import { buildLaunchCommand, getDefaultProviderCommand, getLaunchCommand } from "./get-launch-command";
 
 describe("getLaunchCommand", () => {
   const posixPlatforms: NodeJS.Platform[] = [
@@ -67,5 +67,26 @@ describe("getLaunchCommand", () => {
     expect(buildLaunchCommand("/tmp/session", provider, "linux")).toBe(
       'cd "/tmp/session" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" test-cli --continue',
     );
+  });
+
+  it("replaces only the provider command with a custom one, keeping the workspace and environment prefix", () => {
+    expect(getLaunchCommand("/tmp/$session", "pi", "linux", "STY=agentbridge pi --tui-mode fullscreen")).toBe(
+      'cd "/tmp/\\$session" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" STY=agentbridge pi --tui-mode fullscreen',
+    );
+    expect(getLaunchCommand("C:\\w", "pi", "win32", '$env:STY="agentbridge"; pi')).toBe(
+      'Set-Location -LiteralPath "C:\\w" -ErrorAction Stop ; $fullPath = $env:Path ; Remove-Item Env:Path -ErrorAction SilentlyContinue ; [Environment]::SetEnvironmentVariable("Path", $fullPath, "Process") ; $env:STY="agentbridge"; pi',
+    );
+  });
+
+  it.each([
+    ["undefined", undefined],
+    ["empty", ""],
+    ["whitespace", "   "],
+  ])("uses the registry default when the custom command is %s", (_, customCommand) => {
+    for (const provider of agentBridgeProviders) {
+      expect(getLaunchCommand("/w", provider.id, "linux", customCommand)).toBe(
+        `cd "/w" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" ${getDefaultProviderCommand(provider)}`,
+      );
+    }
   });
 });

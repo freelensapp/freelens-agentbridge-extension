@@ -4,11 +4,14 @@ import {
   DEFAULT_EDITOR_URI_SCHEME,
   DEFAULT_PROBE_TIMEOUT_MS,
   defaultExtensionSettings,
+  MAX_LAUNCH_COMMAND_LENGTH,
   MAX_PROBE_TIMEOUT_MS,
   MIN_PROBE_TIMEOUT_MS,
   normalizeEditorCommand,
   normalizeEditorUriScheme,
   normalizeExtensionSettings,
+  normalizeLaunchCommand,
+  normalizeLaunchCommands,
   normalizeProbeTimeoutMs,
 } from "./extension-settings";
 
@@ -80,11 +83,73 @@ describe("normalizeEditorUriScheme", () => {
   });
 });
 
+describe("normalizeLaunchCommand", () => {
+  it.each([
+    ["a bare alias", "mypi", "mypi"],
+    ["a POSIX env prefix", "STY=agentbridge pi", "STY=agentbridge pi"],
+    ["a PowerShell env prefix", '$env:STY="agentbridge"; pi', '$env:STY="agentbridge"; pi'],
+    ["a wrapper with flags", "~/bin/pi-wrapper --tui-mode fullscreen", "~/bin/pi-wrapper --tui-mode fullscreen"],
+    ["surrounding whitespace", "  claude --continue  ", "claude --continue"],
+  ])("keeps %s", (_, input, expected) => {
+    expect(normalizeLaunchCommand(input)).toBe(expected);
+  });
+
+  it.each([
+    ["an empty string", ""],
+    ["whitespace only", "   "],
+    ["a newline", "pi\nrm -rf ~"],
+    ["a carriage return", "pi\rrm -rf ~"],
+    ["a tab", "pi\t--x"],
+    ["an escape sequence", "pi\u001b[2J"],
+    ["a command over the length limit", "x".repeat(MAX_LAUNCH_COMMAND_LENGTH + 1)],
+    ["a non-string", 42],
+    ["undefined", undefined],
+  ])("returns an empty command (use the default) for %s", (_, input) => {
+    expect(normalizeLaunchCommand(input)).toBe("");
+  });
+});
+
+describe("normalizeLaunchCommands", () => {
+  it("keeps known providers with a usable command and drops everything else", () => {
+    expect(
+      normalizeLaunchCommands({
+        pi: "  STY=agentbridge pi ",
+        claude: "",
+        codex: "codex\nwhoami",
+        unknown: "evil",
+      }),
+    ).toEqual({ pi: "STY=agentbridge pi" });
+  });
+
+  it("ignores inherited properties", () => {
+    expect(normalizeLaunchCommands(Object.create({ opencode: "inherited" }))).toEqual({});
+  });
+
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["a string", "pi"],
+    ["an array", ["pi"]],
+  ])("returns no overrides for %s", (_, input) => {
+    expect(normalizeLaunchCommands(input)).toEqual({});
+  });
+});
+
 describe("normalizeExtensionSettings", () => {
   it("keeps valid settings", () => {
     expect(
-      normalizeExtensionSettings({ probeTimeoutMs: 30_000, editorCommand: "codium", editorUriScheme: "vscodium" }),
-    ).toEqual({ probeTimeoutMs: 30_000, editorCommand: "codium", editorUriScheme: "vscodium" });
+      normalizeExtensionSettings({
+        probeTimeoutMs: 30_000,
+        editorCommand: "codium",
+        editorUriScheme: "vscodium",
+        launchCommands: { pi: "my-pi --tui-mode fullscreen" },
+      }),
+    ).toEqual({
+      probeTimeoutMs: 30_000,
+      editorCommand: "codium",
+      editorUriScheme: "vscodium",
+      launchCommands: { pi: "my-pi --tui-mode fullscreen" },
+    });
   });
 
   it.each([

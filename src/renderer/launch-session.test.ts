@@ -55,6 +55,24 @@ describe("launchProviderSession", () => {
     expect(sendCommand).toHaveBeenCalledTimes(1);
   });
 
+  it("sends the custom command when one is configured", () => {
+    const { deps, sendCommand } = createDeps({ isReady: true });
+
+    launchProviderSession(deps, {
+      workdir: "/w",
+      providerId: "pi",
+      platform: "linux",
+      title: "session",
+      customCommand: "mypi --tui-mode fullscreen",
+    });
+
+    vi.advanceTimersByTime(100);
+
+    expect(sendCommand.mock.calls[0][0]).toBe(
+      'cd "/w" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" mypi --tui-mode fullscreen',
+    );
+  });
+
   it("sends the boot command only once", () => {
     const { deps, sendCommand } = createDeps({ isReady: true });
 

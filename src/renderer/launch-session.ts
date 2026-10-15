@@ -15,6 +15,8 @@ export interface LaunchSessionOptions {
   providerId: string;
   platform: NodeJS.Platform;
   title: string;
+  // User-configured replacement for the provider command; blank uses the default.
+  customCommand?: string;
   readyTimeoutMs?: number;
   onSettled?: () => void;
 }
@@ -23,7 +25,7 @@ export interface LaunchSessionOptions {
 // The session is plain interactive; the user drives the CLI themselves.
 export function launchProviderSession(deps: LaunchSessionDeps, options: LaunchSessionOptions): void {
   const tabId = deps.createTerminalTab({ title: options.title }).id;
-  const bootCommand = getLaunchCommand(options.workdir, options.providerId, options.platform);
+  const bootCommand = getLaunchCommand(options.workdir, options.providerId, options.platform, options.customCommand);
   const readyTimeoutMs = options.readyTimeoutMs ?? 15_000;
   let sent = false;
   let timeoutId: ReturnType<typeof setTimeout>;

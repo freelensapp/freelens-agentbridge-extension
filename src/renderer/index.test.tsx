@@ -10,6 +10,8 @@ vi.mock("./settings-page", () => ({
   ProbeTimeoutHint: () => null,
   EditorCommandSetting: () => null,
   EditorCommandHint: () => null,
+  LaunchCommandsSetting: () => null,
+  LaunchCommandsHint: () => null,
 }));
 
 import AgentBridgeRendererExtension from "./index";
@@ -43,7 +45,7 @@ describe("AgentBridgeRendererExtension sidebar registration", () => {
   it("registers the probe timeout preference", () => {
     const extension = new AgentBridgeRendererExtension({} as never);
 
-    expect(extension.appPreferences).toHaveLength(2);
+    expect(extension.appPreferences).toHaveLength(3);
 
     const [preference] = extension.appPreferences;
 
@@ -58,6 +60,16 @@ describe("AgentBridgeRendererExtension sidebar registration", () => {
     const preference = extension.appPreferences.find((entry) => entry.id === "agentbridge-editor-command");
 
     expect(preference).toMatchObject({ id: "agentbridge-editor-command", title: "Freelens Agent Bridge" });
+    expect(preference?.components.Input).toBeTypeOf("function");
+    expect(preference?.components.Hint).toBeTypeOf("function");
+  });
+
+  it("registers the launch commands preference", () => {
+    const extension = new AgentBridgeRendererExtension({} as never);
+
+    const preference = extension.appPreferences.find((entry) => entry.id === "agentbridge-launch-commands");
+
+    expect(preference).toMatchObject({ id: "agentbridge-launch-commands", title: "Freelens Agent Bridge" });
     expect(preference?.components.Input).toBeTypeOf("function");
     expect(preference?.components.Hint).toBeTypeOf("function");
   });

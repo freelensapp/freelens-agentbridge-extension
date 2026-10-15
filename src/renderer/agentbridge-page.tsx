@@ -12,6 +12,7 @@ import { loadProvider, loadSelectedProvider, saveSelectedProvider } from "./prov
 import { createRendererLaunchDeps } from "./renderer-launch";
 
 import type { AgentBridgeProviderId } from "../common/agentbridge-providers";
+import type { ExtensionSettings } from "../common/extension-settings";
 import type { HarnessInventoryResult } from "../common/harness-artifacts";
 import type { ProviderLoadResult } from "./provider-selection";
 
@@ -196,14 +197,22 @@ export const AgentBridgePage = observer(function AgentBridgePage({ extension: _e
     };
   }, [clusterId, providerId, state.status]);
 
-  function launch() {
+  async function launch() {
     if (!provider || state.status !== "ready") return;
+    const { workdir } = state;
     setLaunching(true);
+    // Read at launch time so a change in Preferences applies to the next
+    // session without reopening the page. A failed read must not block the
+    // launch, so it falls back to the default command.
+    const settings = (await ipcRenderer.invoke(`${CHANNEL_PREFIX}get-settings`).catch(() => undefined)) as
+      | ExtensionSettings
+      | undefined;
     launchProviderSession(createRendererLaunchDeps(), {
-      workdir: state.workdir,
+      workdir,
       providerId: provider.id,
       platform: process.platform,
       title: `${provider.name} Session`,
+      customCommand: settings?.launchCommands?.[provider.id],
       onSettled: () => setLaunching(false),
     });
   }

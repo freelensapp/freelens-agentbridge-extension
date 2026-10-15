@@ -56,6 +56,17 @@ describe("extension settings store", () => {
     });
   });
 
+  it("replaces the launch command map as a whole and keeps other fields", () => {
+    writeExtensionSettings(userData, { editorCommand: "codium", launchCommands: { pi: "mypi", claude: "claude-w" } });
+    writeExtensionSettings(userData, { launchCommands: { pi: "STY=agentbridge pi" } });
+
+    expect(readExtensionSettings(userData)).toEqual({
+      ...defaultExtensionSettings,
+      editorCommand: "codium",
+      launchCommands: { pi: "STY=agentbridge pi" },
+    });
+  });
+
   it("creates the user data directory when missing", () => {
     const nested = path.join(userData, "nested");
 

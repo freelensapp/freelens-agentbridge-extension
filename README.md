@@ -409,6 +409,15 @@ Under **Preferences → Extensions → Freelens Agent Bridge**:
 - **Editor command** — the CLI used by **Open in editor** (default `code`).
   Set it to `codium`, `cursor`, or another VS Code fork. On macOS, run
   "Shell Command: Install 'code' command in PATH" from VS Code first.
+- **Launch commands** — one field per provider, replacing the CLI command
+  that **Launch** types into the terminal tab (for example an alias, a
+  wrapper script, extra flags, or environment variables). Leave a field
+  empty to keep the default shown in it. The extension still changes to the
+  workspace and sets `KUBECONFIG` and `PATH` first; only the part after that
+  is replaced, and it runs in your terminal's shell, so use that shell's
+  syntax — `STY=agentbridge pi` on macOS/Linux,
+  `$env:STY="agentbridge"; pi` in PowerShell on Windows. The value must be a
+  single line. The availability check still probes the default executable.
 
 ## Security model
 

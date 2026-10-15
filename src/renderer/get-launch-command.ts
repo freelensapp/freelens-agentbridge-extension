@@ -34,15 +34,34 @@ const launchCommandBuilders: Record<NodeJS.Platform, LaunchCommandBuilder> = {
   win32: getWindowsLaunchCommand,
 };
 
+export function getDefaultProviderCommand(provider: AgentBridgeProvider): string {
+  return [provider.executable, ...provider.launchArgs].join(" ");
+}
+
 // Builds the shell command that boots the provider CLI in its workspace with an
 // inherited KUBECONFIG/PATH. The session is plain interactive — the user drives
 // it, including running the bundled cluster-map command themselves.
-export function buildLaunchCommand(workdir: string, provider: AgentBridgeProvider, platform: NodeJS.Platform): string {
-  const parts = [provider.executable, ...provider.launchArgs];
+//
+// `customCommand` is the user's "Launch command" preference. It replaces only
+// the `<executable> <launchArgs>` tail, verbatim: the workspace `cd` and the
+// environment prefix stay, so an alias or wrapper still starts in the right
+// directory against the right cluster. Blank means the registry default.
+export function buildLaunchCommand(
+  workdir: string,
+  provider: AgentBridgeProvider,
+  platform: NodeJS.Platform,
+  customCommand?: string,
+): string {
+  const command = customCommand?.trim() || getDefaultProviderCommand(provider);
 
-  return launchCommandBuilders[platform](workdir, parts.join(" "));
+  return launchCommandBuilders[platform](workdir, command);
 }
 
-export function getLaunchCommand(workdir: string, providerId: string, platform: NodeJS.Platform): string {
-  return buildLaunchCommand(workdir, getAgentBridgeProvider(providerId), platform);
+export function getLaunchCommand(
+  workdir: string,
+  providerId: string,
+  platform: NodeJS.Platform,
+  customCommand?: string,
+): string {
+  return buildLaunchCommand(workdir, getAgentBridgeProvider(providerId), platform, customCommand);
 }

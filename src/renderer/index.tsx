@@ -1,6 +1,13 @@
 import { Renderer } from "@freelensapp/extensions";
 import { AgentBridgePage } from "./agentbridge-page";
-import { EditorCommandHint, EditorCommandSetting, ProbeTimeoutHint, ProbeTimeoutSetting } from "./settings-page";
+import {
+  EditorCommandHint,
+  EditorCommandSetting,
+  LaunchCommandsHint,
+  LaunchCommandsSetting,
+  ProbeTimeoutHint,
+  ProbeTimeoutSetting,
+} from "./settings-page";
 
 const {
   Component: { Icon },
@@ -42,6 +49,14 @@ export default class AgentBridgeRendererExtension extends Renderer.LensExtension
       components: {
         Input: () => <EditorCommandSetting />,
         Hint: () => <EditorCommandHint />,
+      },
+    },
+    {
+      id: "agentbridge-launch-commands",
+      title: "Freelens Agent Bridge",
+      components: {
+        Input: () => <LaunchCommandsSetting />,
+        Hint: () => <LaunchCommandsHint />,
       },
     },
   ];
