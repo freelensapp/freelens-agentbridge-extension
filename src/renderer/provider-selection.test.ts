@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  loadProvider,
-  loadSelectedProvider,
-  type StorageLike,
-  saveSelectedProvider,
-} from "./provider-selection";
+import { loadProvider, loadSelectedProvider, type StorageLike, saveSelectedProvider } from "./provider-selection";
 
 class MemoryStorage implements StorageLike {
   readonly values = new Map<string, string>();

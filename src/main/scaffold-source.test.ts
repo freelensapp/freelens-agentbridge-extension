@@ -149,9 +149,7 @@ describe("provider scaffolds", () => {
   });
 
   it("limits OpenCode shell permissions to ask plus read-only Kubernetes and Helm commands", () => {
-    const config = JSON.parse(
-      readScaffoldFile("opencode", ".opencode/opencode.json"),
-    );
+    const config = JSON.parse(readScaffoldFile("opencode", ".opencode/opencode.json"));
     const bash = config.permission.bash;
 
     expect(bash["*"]).toBe("ask");
@@ -162,9 +160,7 @@ describe("provider scaffolds", () => {
   });
 
   it("allows Claude read-only Kubernetes and Helm commands without bypassing permissions", () => {
-    const config = JSON.parse(
-      readScaffoldFile("claude", ".claude/settings.json"),
-    );
+    const config = JSON.parse(readScaffoldFile("claude", ".claude/settings.json"));
 
     expect(JSON.stringify(config)).not.toMatch(/bypass/i);
     expect(config.permissions).toEqual({
@@ -173,9 +169,7 @@ describe("provider scaffolds", () => {
   });
 
   it("keeps Copilot settings permission-free", () => {
-    const config = JSON.parse(
-      readScaffoldFile("copilot", ".github/copilot/settings.json"),
-    );
+    const config = JSON.parse(readScaffoldFile("copilot", ".github/copilot/settings.json"));
 
     expect(config).toEqual({});
   });

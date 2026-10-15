@@ -87,7 +87,9 @@ async function staticExportNames(file, seen = new Set()) {
     if (node.type === "ExportNamedDeclaration") {
       const declarations = node.declaration?.declarations ?? (node.declaration ? [node.declaration] : []);
       names.push(...declarations.map((/** @type {any} */ declaration) => declaration.id?.name).filter(Boolean));
-      names.push(...node.specifiers.map((/** @type {any} */ specifier) => specifier.exported.name ?? specifier.exported.value));
+      names.push(
+        ...node.specifiers.map((/** @type {any} */ specifier) => specifier.exported.name ?? specifier.exported.value),
+      );
     } else if (node.type === "ExportAllDeclaration") {
       if (node.exported) {
         names.push(node.exported.name ?? node.exported.value);
