@@ -48,7 +48,8 @@ be run, the inventory describes what **exists** on disk — including everything
 - **`src/main/read-frontmatter.ts`** — reads at most the first 4096 bytes of each
   artifact file and extracts `name` and `description` with a line-oriented reader.
 - **`src/main/index.ts`** — registers the IPC channel
-  `agentbridge-extension:list-provider-artifacts`, invoked as
+  `list-provider-artifacts` (`ipcChannels.listProviderArtifacts`, prefixed by
+  the host's `Main.Ipc`), invoked as
   `(clusterId, providerId)`. The scan root is always derived from
   `app.getPath("userData")` plus those two ids; the renderer can never supply a
   path.
@@ -138,16 +139,6 @@ of its `ns-map-<namespace>` skills.
 - An **unknown provider id** throws (project convention for invalid programmer
   input) rather than returning an error result; the rejected `invoke` is turned
   back into an error result by `loadHarnessInventory` in the renderer.
-- A **missing IPC handler** — Electron's `No handler registered for
-  'agentbridge-extension:list-provider-artifacts'` — is rewritten by
-  `describeInventoryError` into the one remedy that works: quit Freelens and
-  reopen it. Freelens re-requires the renderer entry on every window reload, but
-  `ExtensionLoader` skips any extension already present in `extensionInstances`,
-  so the main process never re-runs `onActivate` and never registers a channel
-  added after startup. Upgrading the extension in place, or rebuilding it while
-  Freelens runs, therefore leaves a new renderer talking to an old main process.
-  No renderer-side retry can fix that, which is why the message names the fix
-  instead of the fault.
 
 ## Security posture
 
