@@ -25,8 +25,10 @@
 // subpath the host does not publish (`react-dom/client`), fails the build
 // rather than reading `undefined` or bundling a second copy.
 
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
+import { parseAst } from "vite";
 
 const hostGlobal = "globalThis.FreelensExtensionApi";
 
@@ -64,22 +66,65 @@ const identifier = /^[A-Za-z_$][\w$]*$/;
 const skippedNames = new Set(["__esModule", "default"]);
 
 /**
+ * The named exports of an ES module file, read from its source, following `export * from` re-exports.
+ *
+ * @param {string} file
+ * @param {Set<string>} seen
+ * @returns {Promise<string[]>}
+ */
+async function staticExportNames(file, seen = new Set()) {
+  if (seen.has(file)) {
+    return [];
+  }
+  seen.add(file);
+
+  /** @type {string[]} */
+  const names = [];
+  /** @type {any[]} */
+  const body = parseAst(await readFile(file, "utf8")).body;
+
+  for (const node of body) {
+    if (node.type === "ExportNamedDeclaration") {
+      const declarations = node.declaration?.declarations ?? (node.declaration ? [node.declaration] : []);
+      names.push(...declarations.map((/** @type {any} */ declaration) => declaration.id?.name).filter(Boolean));
+      names.push(...node.specifiers.map((/** @type {any} */ specifier) => specifier.exported.name ?? specifier.exported.value));
+    } else if (node.type === "ExportAllDeclaration") {
+      if (node.exported) {
+        names.push(node.exported.name ?? node.exported.value);
+      } else {
+        names.push(...(await staticExportNames(resolvePath(dirname(file), node.source.value), seen)));
+      }
+    }
+  }
+  return names;
+}
+
+/**
  * The names to export: the members of the installed copy that are identifiers.
+ *
+ * A package that Node cannot load, such as `monaco-editor`, whose CommonJS entry is an AMD build and whose ES module
+ * entry needs a DOM, has its names read from the source of the ES module entry the bundler resolves it to.
  *
  * @param {NodeJS.Require} require
  * @param {string} moduleId
+ * @param {() => Promise<string | undefined>} resolveEsmEntry
  */
-function exportNames(require, moduleId) {
-  let library;
+async function exportNames(require, moduleId, resolveEsmEntry) {
+  /** @type {string[]} */
+  let names;
   try {
-    library = require(moduleId);
+    names = Object.keys(require(moduleId));
   } catch (error) {
-    throw new Error(
-      `cannot load the installed "${moduleId}" to read its exports; the host provides it, so it must be a devDependency at the version the host runs`,
-      { cause: error },
-    );
+    const esmEntry = await resolveEsmEntry();
+    if (!esmEntry) {
+      throw new Error(
+        `cannot load the installed "${moduleId}" to read its exports; the host provides it, so it must be a devDependency at the version the host runs`,
+        { cause: error },
+      );
+    }
+    names = await staticExportNames(esmEntry);
   }
-  return Object.keys(library).filter((name) => identifier.test(name) && !skippedNames.has(name));
+  return names.filter((name) => identifier.test(name) && !skippedNames.has(name));
 }
 
 /**
@@ -119,12 +164,16 @@ export function hostModules(processName) {
       return null;
     },
 
-    load(id) {
+    async load(id) {
       if (!id.startsWith(virtualPrefix)) {
         return null;
       }
       const moduleId = id.slice(virtualPrefix.length);
-      const names = exportNames(require, moduleId);
+      const names = await exportNames(
+        require,
+        moduleId,
+        async () => (await this.resolve(moduleId, undefined, { skipSelf: true }))?.id,
+      );
       // One declaration per name. The bundler keeps a plain property read even
       // when nothing imports it, as it might run a getter; the annotation lets
       // it drop the names nothing imports.
