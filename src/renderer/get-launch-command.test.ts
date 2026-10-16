@@ -3,29 +3,14 @@ import { type AgentBridgeProvider, agentBridgeProviders } from "../common/agentb
 import { buildLaunchCommand, getLaunchCommand } from "./get-launch-command";
 
 describe("getLaunchCommand", () => {
-  const posixPlatforms: NodeJS.Platform[] = [
-    "aix",
-    "android",
-    "cygwin",
-    "darwin",
-    "freebsd",
-    "haiku",
-    "linux",
-    "netbsd",
-    "openbsd",
-    "sunos",
-  ];
-
-  it("uses each provider executable on every POSIX platform without expanding workspace literals", () => {
+  it("uses each provider executable on a POSIX shell without expanding workspace literals", () => {
     const workdir = '/tmp/$USER/`touch`/$(echo pwn)/"quote"/slash\\dir';
 
     for (const provider of agentBridgeProviders) {
-      for (const platform of posixPlatforms) {
-        expect(getLaunchCommand(workdir, provider.id, platform)).toBe(
-          'cd "/tmp/\\$USER/\\`touch\\`/\\$(echo pwn)/\\"quote\\"/slash\\\\dir" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" ' +
-            [provider.executable, ...provider.launchArgs].join(" "),
-        );
-      }
+      expect(getLaunchCommand(workdir, provider.id, "posix")).toBe(
+        'cd "/tmp/\\$USER/\\`touch\\`/\\$(echo pwn)/\\"quote\\"/slash\\\\dir" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" ' +
+          [provider.executable, ...provider.launchArgs].join(" "),
+      );
     }
   });
 
@@ -37,14 +22,14 @@ describe("getLaunchCommand", () => {
     const codexFlags =
       "codex --sandbox workspace-write --ask-for-approval on-request -c sandbox_workspace_write.network_access=true";
 
-    expect(getLaunchCommand("/tmp/session", "codex", "linux")).toBe(
+    expect(getLaunchCommand("/tmp/session", "codex", "posix")).toBe(
       `cd "/tmp/session" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" ${codexFlags}`,
     );
-    expect(getLaunchCommand("C:\\sessions\\prod", "codex", "win32").endsWith(codexFlags)).toBe(true);
+    expect(getLaunchCommand("C:\\sessions\\prod", "codex", "windows").endsWith(codexFlags)).toBe(true);
   });
 
   it("keeps Windows PowerShell workspace paths literal", () => {
-    const command = getLaunchCommand("C:\\Users\\$name\\`temp\\cluster-*", "opencode", "win32");
+    const command = getLaunchCommand("C:\\Users\\$name\\`temp\\cluster-*", "opencode", "windows");
 
     expect(command).toBe(
       'Set-Location -LiteralPath "C:\\Users\\`$name\\``temp\\cluster-*" -ErrorAction Stop ; $fullPath = $env:Path ; Remove-Item Env:Path -ErrorAction SilentlyContinue ; [Environment]::SetEnvironmentVariable("Path", $fullPath, "Process") ; opencode',
@@ -64,7 +49,7 @@ describe("getLaunchCommand", () => {
       resetPaths: [],
     };
 
-    expect(buildLaunchCommand("/tmp/session", provider, "linux")).toBe(
+    expect(buildLaunchCommand("/tmp/session", provider, "posix")).toBe(
       'cd "/tmp/session" && KUBECONFIG="$KUBECONFIG" PATH="$PATH" test-cli --continue',
     );
   });

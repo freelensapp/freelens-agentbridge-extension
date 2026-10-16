@@ -4,7 +4,9 @@ import {
   type PrepareWorkspaceResult,
   type ProviderCheckResult,
 } from "../common/agentbridge-providers";
-import { describeStaleMainProcessError, FULL_RESTART_REMEDY } from "./stale-main-process";
+import { ipcChannels } from "../common/ipc-channels";
+
+import type { IpcInvoke } from "../common/ipc-channels";
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -15,10 +17,6 @@ export interface StorageLike {
 export type ProviderLoadResult =
   | { status: "ready"; version: string; workdir: string }
   | Exclude<ProviderCheckResult, { status: "ready" }>;
-
-export type IpcInvoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
-
-const channelPrefix = "agentbridge-extension:";
 
 function storageKey(clusterId: string): string {
   return `agentbridge-extension:selected-provider:${clusterId}`;
@@ -62,14 +60,9 @@ export function saveSelectedProvider(
 }
 
 // The page renders this as `${provider.name}: ${error}`, so the message must not
-// name the provider again. A renderer that offers a provider the running main
-// process has never heard of is the same stale-bundle failure as a missing
-// channel, and has the same single remedy.
+// name the provider again.
 function describeLoadError(error: unknown): string {
-  return describeStaleMainProcessError(
-    error instanceof Error ? error.message : String(error),
-    `Unavailable until Freelens is fully restarted: this session's main process started before the extension was updated. ${FULL_RESTART_REMEDY}`,
-  );
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function loadProvider(
@@ -81,7 +74,7 @@ export async function loadProvider(
   let check: ProviderCheckResult;
 
   try {
-    check = (await invoke(`${channelPrefix}check-provider`, providerId)) as ProviderCheckResult;
+    check = (await invoke(ipcChannels.checkProvider, providerId)) as ProviderCheckResult;
   } catch (error) {
     return isCurrent() ? { status: "error", error: describeLoadError(error) } : undefined;
   }
@@ -94,11 +87,7 @@ export async function loadProvider(
   }
 
   try {
-    const workspace = (await invoke(
-      `${channelPrefix}prepare-workspace`,
-      clusterId,
-      providerId,
-    )) as PrepareWorkspaceResult;
+    const workspace = (await invoke(ipcChannels.prepareWorkspace, clusterId, providerId)) as PrepareWorkspaceResult;
 
     return isCurrent() ? { status: "ready", version: check.version, workdir: workspace.workdir } : undefined;
   } catch (error) {

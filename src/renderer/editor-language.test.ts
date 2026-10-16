@@ -4,23 +4,20 @@ import { describe, expect, it } from "vitest";
 import { agentBridgeProviders } from "../common/agentbridge-providers";
 import { monacoLanguageFor } from "./editor-language";
 
-// Language ids registered by monaco-editor outside `basic-languages`, which has
-// only the tokenizer-based grammars.
-const RICH_LANGUAGES = ["json", "typescript", "javascript", "css", "html"];
-
-// The language ids the bundled Monaco actually registers, read from the
-// installed package rather than hardcoded: an upgrade that finally ships a TOML
-// grammar should make the mapping below reviewable, not silently stale.
-function bundledMonacoLanguages(): Set<string> {
-  const basicLanguages = path.join(process.cwd(), "node_modules/monaco-editor/esm/vs/basic-languages");
-  const directories = readdirSync(basicLanguages, { withFileTypes: true })
+// The language ids Monaco registers, read from the installed package, which is
+// pinned to the host's version, rather than hardcoded: an upgrade that finally
+// ships a TOML grammar should make the mapping below reviewable, not silently
+// stale. `plaintext` is built into the editor rather than defined as a language.
+function hostMonacoLanguages(): Set<string> {
+  const definitions = path.join(process.cwd(), "node_modules/monaco-editor/esm/vs/languages/definitions");
+  const directories = readdirSync(definitions, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
 
-  // A path that resolved to nothing would make the assertion below vacuous.
+  // A path that resolved to nothing would make the assertions below vacuous.
   expect(directories.length).toBeGreaterThan(0);
 
-  return new Set([...directories, ...RICH_LANGUAGES]);
+  return new Set([...directories, "json", "plaintext"]);
 }
 
 describe("monacoLanguageFor", () => {
@@ -29,27 +26,25 @@ describe("monacoLanguageFor", () => {
     expect(monacoLanguageFor("markdown")).toBe("markdown");
   });
 
-  // Monaco 0.52.2 has no TOML grammar and does not fall back when handed an
+  // Monaco has no TOML grammar and does not fall back when handed an
   // unregistered id — it renders plain, unhighlighted text. `ini` is the closest
   // grammar it does have: `# comments`, `[table]` headers and `key = value`.
   it("renders TOML with Monaco's ini grammar", () => {
     expect(monacoLanguageFor("toml")).toBe("ini");
   });
 
-  it("confirms the bundled Monaco still has no TOML grammar", () => {
-    expect(bundledMonacoLanguages().has("toml")).toBe(false);
+  it("confirms the host's Monaco still has no TOML grammar", () => {
+    expect(hostMonacoLanguages().has("toml")).toBe(false);
   });
 
-  // Unlike TOML, TypeScript needs no substitute: Monaco registers it as a full
-  // language service. Pi's `.pi/extensions/kubectl-guard.ts` is the first — and
-  // so far only — declared file that is executable code rather than data.
-  it("passes TypeScript through to Monaco's own language service", () => {
-    expect(monacoLanguageFor("typescript")).toBe("typescript");
-    expect(bundledMonacoLanguages().has("typescript")).toBe(true);
+  // The `typescript` id brings Monaco's TypeScript language service, whose
+  // worker the host does not provide.
+  it("shows TypeScript as plain text", () => {
+    expect(monacoLanguageFor("typescript")).toBe("plaintext");
   });
 
-  it("never returns a language the bundled Monaco does not register", () => {
-    const registered = bundledMonacoLanguages();
+  it("never returns a language the host's Monaco does not register", () => {
+    const registered = hostMonacoLanguages();
 
     for (const provider of agentBridgeProviders) {
       for (const editor of provider.editors) {

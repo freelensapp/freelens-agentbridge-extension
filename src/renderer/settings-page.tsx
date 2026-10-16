@@ -1,5 +1,4 @@
 import { Renderer } from "@freelensapp/extensions";
-import { ipcRenderer } from "electron";
 import { useEffect, useRef, useState } from "react";
 import {
   DEFAULT_EDITOR_COMMAND,
@@ -10,21 +9,22 @@ import {
   normalizeEditorCommand,
   normalizeProbeTimeoutMs,
 } from "../common/extension-settings";
+import { ipcChannels } from "../common/ipc-channels";
+import { invoke } from "./ipc";
 
-const CHANNEL_PREFIX = "agentbridge-extension:";
 const SAVE_DEBOUNCE_MS = 500;
 
 export function ProbeTimeoutSetting() {
   const [value, setValue] = useState<string>();
   const [error, setError] = useState<string>();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     let cancelled = false;
 
-    void ipcRenderer
-      .invoke(`${CHANNEL_PREFIX}get-settings`)
-      .then((settings: ExtensionSettings) => {
+    void invoke(ipcChannels.getSettings)
+      .then((result) => {
+        const settings = result as ExtensionSettings;
         if (!cancelled) setValue(String(settings.probeTimeoutMs));
       })
       .catch((err: unknown) => {
@@ -42,8 +42,9 @@ export function ProbeTimeoutSetting() {
   function save(next: string) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      void ipcRenderer
-        .invoke(`${CHANNEL_PREFIX}set-settings`, { probeTimeoutMs: normalizeProbeTimeoutMs(next) })
+      void invoke(ipcChannels.setSettings, {
+        probeTimeoutMs: normalizeProbeTimeoutMs(next),
+      })
         .then(() => setError(undefined))
         .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
     }, SAVE_DEBOUNCE_MS);
@@ -82,14 +83,14 @@ export function ProbeTimeoutSetting() {
 export function EditorCommandSetting() {
   const [value, setValue] = useState<string>();
   const [error, setError] = useState<string>();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     let cancelled = false;
 
-    void ipcRenderer
-      .invoke(`${CHANNEL_PREFIX}get-settings`)
-      .then((settings: ExtensionSettings) => {
+    void invoke(ipcChannels.getSettings)
+      .then((result) => {
+        const settings = result as ExtensionSettings;
         if (!cancelled) setValue(settings.editorCommand);
       })
       .catch((err: unknown) => {
@@ -107,8 +108,9 @@ export function EditorCommandSetting() {
   function save(next: string) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      void ipcRenderer
-        .invoke(`${CHANNEL_PREFIX}set-settings`, { editorCommand: normalizeEditorCommand(next) })
+      void invoke(ipcChannels.setSettings, {
+        editorCommand: normalizeEditorCommand(next),
+      })
         .then(() => setError(undefined))
         .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
     }, SAVE_DEBOUNCE_MS);

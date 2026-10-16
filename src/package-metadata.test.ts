@@ -6,7 +6,10 @@ const packageMetadata = JSON.parse(readFileSync(new URL("../package.json", impor
   description: string;
   repository: { url: string };
   keywords: string[];
-  scripts: { "build:production": string };
+  type: string;
+  main: string;
+  renderer: string;
+  engines: { freelens: string };
 };
 
 describe("package metadata", () => {
@@ -34,9 +37,14 @@ describe("package metadata", () => {
     });
   });
 
-  it("uses a cross-platform production build script", () => {
-    expect(packageMetadata.scripts["build:production"]).toBe(
-      "cross-env VITE_PRESERVE_MODULES=false electron-vite build",
-    );
+  // Freelens 2 refuses an extension at discovery unless engines.freelens admits
+  // 2.x, and reloads a rebuilt main entry under `pnpm dev` only when it is ESM.
+  it("declares a Freelens 2 extension with ESM entry points in dist", () => {
+    expect(packageMetadata).toMatchObject({
+      type: "module",
+      main: "dist/main.js",
+      renderer: "dist/renderer.js",
+      engines: { freelens: "^2.0.0" },
+    });
   });
 });

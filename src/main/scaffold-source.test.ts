@@ -1,8 +1,8 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { agentBridgeProviders } from "../common/agentbridge-providers";
-import { resolveProviderScaffold, resolveScaffoldsRoot } from "./scaffold-source";
+import { listScaffoldFiles, readScaffoldFile } from "./scaffold-source";
 
 // The cluster-map scaffold of a provider, resolved through the optional
 // `source` indirection the registry uses when the bundled path differs from the
@@ -12,21 +12,24 @@ function commandScaffold(providerId: string): string {
   const command = provider?.editors.find((editor) => editor.role === "command");
   const sourceRel = (command as { source?: string; path: string }).source ?? (command as { path: string }).path;
 
-  return readFileSync(path.join(resolveProviderScaffold(providerId), sourceRel), "utf8");
+  return readScaffoldFile(providerId, sourceRel);
 }
 
-// Every bundled scaffold file of every provider, as [relative path, contents].
-function everyScaffoldFile(): [string, string][] {
-  const root = resolveScaffoldsRoot();
+// Every scaffold file in the source tree, as [relative path, contents], with
+// `/` separators as the embedded keys have them.
+function scaffoldFilesOnDisk(): [string, string][] {
+  const root = path.join(import.meta.dirname, "scaffolds");
 
   return readdirSync(root, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
     .map((entry) => {
       const absolute = path.join(entry.parentPath, entry.name);
 
-      return [path.relative(root, absolute), readFileSync(absolute, "utf8")];
+      return [path.relative(root, absolute).split(path.sep).join("/"), readFileSync(absolute, "utf8")];
     });
 }
+
+const sortByPath = (files: [string, string][]) => [...files].sort(([a], [b]) => a.localeCompare(b));
 
 const allowedBashCommands = [
   "kubectl get",
@@ -48,23 +51,30 @@ const allowedBashCommands = [
 ];
 
 describe("provider scaffolds", () => {
-  it("uses the bundled scaffolds root unless explicitly overridden", () => {
-    expect(resolveScaffoldsRoot("custom")).toBe("custom");
-    expect(resolveProviderScaffold("opencode", "custom")).toBe(path.join("custom", "opencode"));
+  // The glob skips paths with a dot segment unless it is exhaustive, and every
+  // provider keeps its configuration under one (`.claude/`, `.codex/`, ...), so
+  // a missed file would only show as a workspace seeded without it.
+  it("embeds every scaffold file of the source tree, dot directories included", () => {
+    const onDisk = scaffoldFilesOnDisk();
+
+    expect(onDisk.some(([file]) => file.startsWith("pi/.pi/"))).toBe(true);
+    expect(sortByPath(listScaffoldFiles())).toEqual(sortByPath(onDisk));
   });
 
   it.each(agentBridgeProviders)("contains every declared editor file for %s", (provider) => {
-    const scaffold = resolveProviderScaffold(provider.id);
-
     for (const editor of provider.editors) {
       const sourceRel = (editor as { source?: string }).source ?? editor.path;
-      expect(existsSync(path.join(scaffold, sourceRel))).toBe(true);
+      expect(() => readScaffoldFile(provider.id, sourceRel), sourceRel).not.toThrow();
     }
+  });
+
+  it("names the missing file when a scaffold is not embedded", () => {
+    expect(() => readScaffoldFile("claude", "missing.md")).toThrow("Missing scaffold: claude/missing.md");
   });
 
   it.each(agentBridgeProviders)("gives %s required cluster-agent guidance", (provider) => {
     const instructions = provider.editors.find((editor) => editor.role === "instructions");
-    const content = readFileSync(path.join(resolveProviderScaffold(provider.id), instructions?.path ?? ""), "utf8");
+    const content = readScaffoldFile(provider.id, instructions?.path ?? "");
 
     expect(content).toMatch(/inherited.*KUBECONFIG/is);
     expect(content).toMatch(/inspect.*before.*mutat/is);
@@ -79,7 +89,7 @@ describe("provider scaffolds", () => {
     expect(command).toBeDefined();
 
     const sourceRel = (command as { source?: string; path: string }).source ?? (command as { path: string }).path;
-    const content = readFileSync(path.join(resolveProviderScaffold(provider.id), sourceRel), "utf8");
+    const content = readScaffoldFile(provider.id, sourceRel);
 
     expect(content).toMatch(/read-only/i);
     expect(content).toMatch(/never.*secret.*value/is);
@@ -92,7 +102,7 @@ describe("provider scaffolds", () => {
   it.each(agentBridgeProviders)("writes cluster-map skills into a scanned skill root for %s", (provider) => {
     const command = provider.editors.find((editor) => editor.role === "command");
     const sourceRel = (command as { source?: string; path: string }).source ?? (command as { path: string }).path;
-    const content = readFileSync(path.join(resolveProviderScaffold(provider.id), sourceRel), "utf8");
+    const content = readScaffoldFile(provider.id, sourceRel);
 
     // The command tells the agent where to persist skills; that directory must be
     // one the artifact scanner actually looks at, or the skills stay invisible.
@@ -139,9 +149,7 @@ describe("provider scaffolds", () => {
   });
 
   it("limits OpenCode shell permissions to ask plus read-only Kubernetes and Helm commands", () => {
-    const config = JSON.parse(
-      readFileSync(path.join(resolveProviderScaffold("opencode"), ".opencode/opencode.json"), "utf8"),
-    );
+    const config = JSON.parse(readScaffoldFile("opencode", ".opencode/opencode.json"));
     const bash = config.permission.bash;
 
     expect(bash["*"]).toBe("ask");
@@ -152,9 +160,7 @@ describe("provider scaffolds", () => {
   });
 
   it("allows Claude read-only Kubernetes and Helm commands without bypassing permissions", () => {
-    const config = JSON.parse(
-      readFileSync(path.join(resolveProviderScaffold("claude"), ".claude/settings.json"), "utf8"),
-    );
+    const config = JSON.parse(readScaffoldFile("claude", ".claude/settings.json"));
 
     expect(JSON.stringify(config)).not.toMatch(/bypass/i);
     expect(config.permissions).toEqual({
@@ -163,15 +169,13 @@ describe("provider scaffolds", () => {
   });
 
   it("keeps Copilot settings permission-free", () => {
-    const config = JSON.parse(
-      readFileSync(path.join(resolveProviderScaffold("copilot"), ".github/copilot/settings.json"), "utf8"),
-    );
+    const config = JSON.parse(readScaffoldFile("copilot", ".github/copilot/settings.json"));
 
     expect(config).toEqual({});
   });
 
   describe("Codex settings", () => {
-    const config = readFileSync(path.join(resolveProviderScaffold("codex"), ".codex/config.toml"), "utf8");
+    const config = readScaffoldFile("codex", ".codex/config.toml");
 
     // These three lines have to be active, not commented out: they are the
     // guardrails a user who has trusted the workspace then edits by hand, and
@@ -206,9 +210,8 @@ describe("provider scaffolds", () => {
   });
 
   describe("Pi scaffolds", () => {
-    const scaffold = resolveProviderScaffold("pi");
-    const guard = readFileSync(path.join(scaffold, ".pi/extensions/kubectl-guard.ts"), "utf8");
-    const settings = JSON.parse(readFileSync(path.join(scaffold, ".pi/settings.json"), "utf8"));
+    const guard = readScaffoldFile("pi", ".pi/extensions/kubectl-guard.ts");
+    const settings = JSON.parse(readScaffoldFile("pi", ".pi/settings.json"));
 
     // The eight built-ins `docs/settings.md` documents. An unknown name here is
     // not a typo the user sees — the tool simply never appears.
@@ -277,7 +280,7 @@ describe("provider scaffolds", () => {
     });
 
     it("ships the cluster-map prompt template as a real slash command", () => {
-      const template = readFileSync(path.join(scaffold, ".pi/prompts/build-cluster-map.md"), "utf8");
+      const template = readScaffoldFile("pi", ".pi/prompts/build-cluster-map.md");
       const frontmatter = template.match(/^---\n([\s\S]*?)\n---\n/)?.[1];
 
       expect(frontmatter).toBeDefined();
@@ -307,7 +310,7 @@ describe("provider scaffolds", () => {
     const pinsAModel =
       /"(model|small_model|defaultModel|defaultProvider)"\s*:|^\s*model(_provider)?\s*=|\[model_providers\./m;
 
-    for (const [file, body] of everyScaffoldFile()) {
+    for (const [file, body] of listScaffoldFiles()) {
       expect(pinsAModel.test(body), `${file} pins a model`).toBe(false);
     }
   });
@@ -317,8 +320,7 @@ describe("provider scaffolds", () => {
   // scaffolds have to say so, because a silently blocked write reads as the
   // agent refusing to work.
   it("tells the Codex session that .agents is read-only inside the sandbox", () => {
-    const scaffold = resolveProviderScaffold("codex");
-    const skill = readFileSync(path.join(scaffold, ".agents/skills/build-cluster-map/SKILL.md"), "utf8");
+    const skill = readScaffoldFile("codex", ".agents/skills/build-cluster-map/SKILL.md");
 
     expect(skill).toMatch(/read-only/i);
     expect(skill).toMatch(/\.agents/);

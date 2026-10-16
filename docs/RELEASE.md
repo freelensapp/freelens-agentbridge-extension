@@ -7,6 +7,20 @@ Published package metadata is `@freelensapp/agentbridge-extension`; repository
 identity remains `freelensapp/freelens-agentbridge-extension` for trusted
 publishing.
 
+The `main` branch carries the 2.x line, which requires Freelens >= 2.0.0
+(`engines.freelens: ^2.0.0`). Freelens 1.x users stay on the 1.x releases.
+Users pick a release whose major version matches their Freelens version.
+
+## Staged workflow changes
+
+GitHub Actions cannot push changes to `.github/workflows/`, so the workflows
+updated for the v2 port are staged in `github-workflow-fix/`: `check.yaml`,
+`release.yaml`, `tag.yaml`, `type-check.yaml`, `integration-tests.yaml`
+(against Freelens `main`), `mise-lock-check.yaml`, and `biome-migrate.yaml`.
+A maintainer moves them into `.github/workflows/` and deletes the directory.
+Until then, the workflows below behave as in the 1.x line; the differences are
+noted where they matter.
+
 ## Required setup
 
 Configure repository before first release:
@@ -37,6 +51,8 @@ bump and refreshed lockfile, then opens a pull request.
 | `prerelease`       | `0.1.0` -> `0.1.1-0` |
 
 For a stable release, select an input that produces an exact `X.Y.Z` version.
+With the staged `tag.yaml`, a prerelease version such as `2.0.0-0` is tagged
+and released as well (see Step 4).
 
 ## Step 2: Review and merge stable version PR
 
@@ -55,17 +71,22 @@ PR. The fallback rejects all other PRs and unmerged PRs.
 Pushing `vX.Y.Z` triggers `Release`, which:
 
 1. Checks tag name matches `package.json` version.
-2. Installs dependencies, builds, and packs one extension `.tgz` archive.
+2. Installs dependencies, builds `dist/` with `pnpm build`, and packs one
+   extension `.tgz` archive.
 3. Publishes with npm OIDC using `latest` for stable versions and `next` for
-   versions with a prerelease suffix, such as `0.2.0-0`.
-4. Creates GitHub Release and attaches generated `.tgz` archive.
+   versions with a prerelease suffix, such as `2.0.0-0`.
+4. Creates GitHub Release and attaches generated `.tgz` archive. The staged
+   `release.yaml` marks the GitHub Release as a prerelease when the tag has a
+   prerelease suffix.
 
 ## Step 4: Start next pre-release version
 
 After stable release completes, manually run `Automated npm version` with
 `prerelease`, review and merge resulting PR. Example: `0.1.1` -> `0.1.2-0`.
-Pre-release versions do not create tags automatically. Start later stable
-release with another manual version bump PR.
+With the current `tag.yaml`, pre-release versions do not create tags
+automatically. The staged `tag.yaml` also tags `X.Y.Z-N` versions, so a merged
+pre-release PR is published under `next` and released as a GitHub prerelease.
+Start later stable release with another manual version bump PR.
 
 ## Workflow chain
 
@@ -97,7 +118,10 @@ Fallback: trusted maintainer comments /tag on closed, merged
 
 ## Pre-release checklist
 
-- Run lint, type check, and unit tests.
-- Confirm extension supports intended Freelens host version.
+- Run `pnpm lint:check`, `pnpm type:check`, `pnpm test:unit`,
+  `pnpm knip:check`, and `pnpm build`.
+- Confirm extension supports intended Freelens host version
+  (`engines.freelens` in `package.json`, and the `Integration tests` workflow
+  against that Freelens).
 - Confirm `automated` and `publishing` environments, `GH_TOKEN` permissions,
   and npm trusted publisher configuration.

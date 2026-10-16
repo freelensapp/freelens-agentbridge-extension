@@ -1,7 +1,7 @@
 # AgentBridge extension - Agent Harness for Freelens
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-![Freelens >= 1.8.0](https://img.shields.io/badge/freelens-%3E%3D1.8.0-blue)
+![Freelens >= 2.0.0](https://img.shields.io/badge/freelens-%3E%3D2.0.0-blue)
 ![macOS | Linux | Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![5 agent providers](https://img.shields.io/badge/agent%20providers-5-brightgreen)
 
@@ -56,9 +56,10 @@ the agent at the wrong environment. This extension removes all of that:
   below for exactly what gets created per provider. Only missing files are
   written, so your edits are never overwritten.
 - **In-app editors** — edit every seeded file — instructions, permissions,
-  settings, and the command — in a Monaco editor inside Freelens, with
-  debounced autosave, syntax highlighting for JSON/TOML/TypeScript/Markdown,
-  and an auto/dark/light theme toggle.
+  settings, and the command — in Freelens' own Monaco editor, with debounced
+  autosave, syntax highlighting for JSON, TOML, and Markdown, and the colors
+  of the active Freelens theme. Pi's TypeScript guard is shown as plain text
+  (see the [Pi notes](#configuring-your-agent)).
 - **Workspace artifacts** — see how many skills and custom agents a
   cluster's workspace holds, and when each last changed, without leaving
   the page.
@@ -79,7 +80,8 @@ the agent at the wrong environment. This extension removes all of that:
 
 ## Requirements
 
-- Freelens >= 1.8.0
+- Freelens >= 2.0.0 (Freelens 1.x is supported by the 1.x releases of this
+  extension only)
 - macOS, Linux, or Windows (PowerShell)
 - At least one supported agent CLI on `PATH` (see [Quick start](#quick-start))
 
@@ -105,9 +107,13 @@ then search for and install `@freelensapp/agentbridge-extension`.
 Alternatively, open this URL in your browser to install directly:
 [freelens://app/extensions/install/%40freelensapp%2Fagentbridge-extension](freelens://app/extensions/install/%40freelensapp%2Fagentbridge-extension)
 
-> **Restart Freelens completely after installing or upgrading.** Freelens
-> loads extension code into its main process once per app run, so a window
-> reload picks up the new UI but leaves the old main process behind.
+The field at the top of the Extensions page also takes the URL of a release
+tarball or the path to a tarball or a directory. Each
+[release](https://github.com/freelensapp/freelens-agentbridge-extension/releases)
+has the extension as `freelensapp-agentbridge-extension-<version>.tgz`; use a
+release whose major version matches your Freelens version. Freelens 2 reloads
+both parts of the extension when it is installed or upgraded, so no restart
+is needed.
 
 ### 3. Launch a session
 
@@ -381,7 +387,9 @@ Five Pi-specific things are worth knowing:
   session with a read-only context when that matters.
 - **A broken guard file stops Pi from starting.** It's executable
   TypeScript, so a syntax error makes Pi exit with `Failed to load
-  extension … ParseError` instead of opening a session. Start Pi with
+  extension … ParseError` instead of opening a session. The in-app editor
+  shows the guard as plain text and cannot flag such an error, because
+  Freelens' Monaco has no TypeScript language service. Start Pi with
   `pi -ne` to skip extensions, or press **Reset** on this page to restore
   the file.
 - **No sub-agents.** Pi has none, so the workspace artifacts panel shows
@@ -427,9 +435,21 @@ The agent fixes a missing secret that crashes the pod:
 
 ## Build from the source
 
-`pnpm pack:dev` builds a prerelease `.tgz` you can install straight from the
-Freelens Extensions page. Full dev setup, build, test, and debugging
-instructions live in [CONTRIBUTING.md](./CONTRIBUTING.md).
+Install the Node.js version in `.nvmrc` (`nvm install` or `mise install`)
+and pnpm (`corepack install`), then, from the root of this repository:
+
+```sh
+pnpm install
+pnpm build
+```
+
+The extension is built into `dist/`. `pnpm pack` packs it into a tarball, and
+`pnpm pack:dev` bumps the prerelease version, builds, and packs in one step;
+install the `.tgz` from the Freelens Extensions page. To work on the
+extension, install the checkout directory from the Extensions page once and
+run `pnpm dev`: it rebuilds on every source change and Freelens reloads the
+extension after each rebuild, without a restart. Full dev setup, build, test,
+and debugging instructions live in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Articles
 
