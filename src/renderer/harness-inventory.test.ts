@@ -1,13 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildArtifactGroup } from "../common/harness-artifacts";
 import {
   chipLabel,
   formatRelativeAge,
   iconForArtifactKind,
   labelForArtifactKind,
-  loadHarnessInventory,
-  opensCoalesceWindow,
-  shouldRefresh,
   summarizeInventory,
   totalLabel,
 } from "./harness-inventory";
@@ -193,116 +190,5 @@ describe("totalLabel", () => {
         buildArtifactGroup("agent", [artifact("r", NOW, "agent")]),
       ]),
     ).toBe("2+");
-  });
-});
-
-describe("shouldRefresh", () => {
-  const request = { lastScanAtMs: undefined, nowMs: NOW, scanInFlight: false, force: false };
-
-  it("always allows the first scan", () => {
-    expect(shouldRefresh(request)).toBe(true);
-  });
-
-  it("coalesces refreshes requested within two seconds of the last scan", () => {
-    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 500 })).toBe(false);
-    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 1_999 })).toBe(false);
-    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 2_000 })).toBe(true);
-    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 10_000 })).toBe(true);
-  });
-
-  it("suppresses a scan while one is already in flight", () => {
-    // Restoring the window fires `focus` and `visibilitychange` in the same tick,
-    // and `lastScanAt` is only written on completion, so the coalescing window
-    // cannot catch the second one: both would run the main-process scan in full.
-    expect(shouldRefresh({ ...request, scanInFlight: true })).toBe(false);
-    expect(shouldRefresh({ ...request, lastScanAtMs: NOW - 10_000, scanInFlight: true })).toBe(false);
-  });
-
-  it("lets an explicit refresh through both gates", () => {
-    expect(shouldRefresh({ ...request, force: true, scanInFlight: true })).toBe(true);
-    expect(shouldRefresh({ ...request, force: true, lastScanAtMs: NOW - 500 })).toBe(true);
-    expect(shouldRefresh({ ...request, force: true, lastScanAtMs: NOW - 500, scanInFlight: true })).toBe(true);
-  });
-});
-
-describe("opensCoalesceWindow", () => {
-  it("opens the window only for a successful scan", () => {
-    expect(opensCoalesceWindow({ status: "ok", groups: [] })).toBe(true);
-  });
-
-  it("keeps a failed or discarded scan retryable", () => {
-    // An error result is truthy, so a naive `if (result)` starts the window and
-    // swallows the automatic retries for the next two seconds.
-    expect(opensCoalesceWindow({ status: "error", error: "Forbidden path" })).toBe(false);
-    expect(opensCoalesceWindow(undefined)).toBe(false);
-  });
-});
-
-describe("loadHarnessInventory", () => {
-  it("invokes the inventory channel with the cluster and provider", async () => {
-    const invoke = vi.fn().mockResolvedValue({ status: "ok", groups: [] });
-
-    await loadHarnessInventory("cluster-1", "claude", invoke, () => true);
-
-    expect(invoke).toHaveBeenCalledWith("list-provider-artifacts", "cluster-1", "claude");
-  });
-
-  it("returns the inventory when the request is still current", async () => {
-    const groups = [buildArtifactGroup("skill", [artifact("a", NOW)])];
-    const invoke = vi.fn().mockResolvedValue({ status: "ok", groups });
-
-    expect(await loadHarnessInventory("cluster-1", "claude", invoke, () => true)).toEqual({ status: "ok", groups });
-  });
-
-  it("discards a stale response", async () => {
-    const invoke = vi.fn().mockResolvedValue({ status: "ok", groups: [] });
-
-    expect(await loadHarnessInventory("cluster-1", "claude", invoke, () => false)).toBeUndefined();
-  });
-
-  it("converts a rejected invoke into an error result", async () => {
-    const invoke = vi.fn().mockRejectedValue(new Error("Forbidden path"));
-
-    expect(await loadHarnessInventory("cluster-1", "claude", invoke, () => true)).toEqual({
-      status: "error",
-      error: "Forbidden path",
-    });
-  });
-
-  it("discards a rejection that is no longer current", async () => {
-    const invoke = vi.fn().mockRejectedValue(new Error("Forbidden path"));
-
-    expect(await loadHarnessInventory("cluster-1", "claude", invoke, () => false)).toBeUndefined();
-  });
-
-  it("stringifies a non-Error rejection", async () => {
-    const invoke = vi.fn().mockRejectedValue("channel closed");
-
-    expect(await loadHarnessInventory("cluster-1", "claude", invoke, () => true)).toEqual({
-      status: "error",
-      error: "channel closed",
-    });
-  });
-
-  it("passes an error result straight through without invoking twice", async () => {
-    const invoke = vi.fn().mockResolvedValue({ status: "error", error: "Forbidden path" });
-
-    expect(await loadHarnessInventory("cluster-1", "claude", invoke, () => true)).toEqual({
-      status: "error",
-      error: "Forbidden path",
-    });
-    expect(invoke).toHaveBeenCalledTimes(1);
-  });
-
-  it("checks currency after the response lands, not before", async () => {
-    // A guard evaluated before the await would let a selection that changed
-    // mid-flight through; asserting the call count pins the order.
-    let settled = false;
-    const invoke = vi.fn().mockImplementation(async () => {
-      settled = true;
-      return { status: "ok", groups: [] };
-    });
-
-    expect(await loadHarnessInventory("cluster-1", "claude", invoke, () => !settled)).toBeUndefined();
   });
 });

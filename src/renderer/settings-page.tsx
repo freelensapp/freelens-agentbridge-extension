@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   DEFAULT_EDITOR_COMMAND,
   DEFAULT_PROBE_TIMEOUT_MS,
-  type ExtensionSettings,
   MAX_PROBE_TIMEOUT_MS,
   MIN_PROBE_TIMEOUT_MS,
   normalizeEditorCommand,
@@ -23,8 +22,7 @@ export function ProbeTimeoutSetting() {
     let cancelled = false;
 
     void invoke(ipcChannels.getSettings)
-      .then((result) => {
-        const settings = result as ExtensionSettings;
+      .then((settings) => {
         if (!cancelled) setValue(String(settings.probeTimeoutMs));
       })
       .catch((err: unknown) => {
@@ -89,8 +87,7 @@ export function EditorCommandSetting() {
     let cancelled = false;
 
     void invoke(ipcChannels.getSettings)
-      .then((result) => {
-        const settings = result as ExtensionSettings;
+      .then((settings) => {
         if (!cancelled) setValue(settings.editorCommand);
       })
       .catch((err: unknown) => {

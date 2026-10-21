@@ -8,6 +8,8 @@ Package metadata tests (`src/package-metadata.test.ts`) assert the v2 manifest: 
 `src/main/scaffold-source.test.ts` compares the scaffold keys embedded by `import.meta.glob` with the files on disk, so a file the glob skips fails the test.
 The TypeScript check runs one program per runtime, and `environment-tests/` proves that renderer and common code see no Node and main code sees no DOM.
 One integration test (`integration/__tests__/extensions.tests.ts`) runs inside a Freelens `main` build in CI: it installs the packed tarball, checks the extension is Enabled (not Incompatible), opens its preferences, and waits for "Version probe timeout (ms)", which is read from the main process over IPC.
+Page logic is tested through `createAgentBridgePageState` (`src/renderer/agentbridge-page-state.test.ts`) with a fake `invoke` that holds every call until the test answers it, so races are staged explicitly; the React page itself only renders.
+IPC contract coverage is type-level: `src/common/ipc-channels.test.ts` uses `expectTypeOf`, so it fails under `pnpm type:check`, not `pnpm test:unit`.
 Everything else that depends on the Freelens host, such as terminal launch and the editors, requires a manual smoke check.
 
 ## Conventions

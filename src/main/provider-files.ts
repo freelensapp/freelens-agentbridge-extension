@@ -13,6 +13,8 @@ import { getAgentBridgeProvider } from "../common/agentbridge-providers";
 import { computeProviderWorkdir } from "./get-provider-workdir";
 import { readScaffoldFile } from "./scaffold-source";
 
+import type { ActionResult } from "../common/ipc-channels";
+
 type OpenPath = (path: string) => Promise<string>;
 
 // Exported for the artifact scanner, which needs the same win32-aware
@@ -227,7 +229,7 @@ export async function revealProviderWorkspace(
   clusterId: string,
   providerId: string,
   openPath: OpenPath,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<ActionResult> {
   try {
     const workdir = resolveVerifiedWorkdir(userData, clusterId, providerId);
 

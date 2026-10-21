@@ -53,17 +53,17 @@ be run, the inventory describes what **exists** on disk — including everything
   `(clusterId, providerId)`. The scan root is always derived from
   `app.getPath("userData")` plus those two ids; the renderer can never supply a
   path.
+- **`src/renderer/agentbridge-page-state.ts`** — owns the scan: the IPC call,
+  the stale-response token, 2-second coalescing, the in-flight and force gates,
+  and when a result opens the coalescing window.
 - **`src/renderer/harness-inventory.ts`** — React-free view logic:
-  `loadHarnessInventory` (IPC call plus the `isCurrent()` stale-response guard,
-  mirroring `loadProvider` in `provider-selection.ts`), `shouldRefresh`
-  (2-second coalescing plus the in-flight and force gates), `opensCoalesceWindow`,
   `formatRelativeAge`, `chipLabel`, `totalLabel`, `summarizeInventory`,
   and `iconForArtifactKind` / `labelForArtifactKind`, which reuse the capability
   registry's icons and labels so both panels share one vocabulary.
 - **`src/renderer/harness-artifacts-section.tsx`** — the view:
   `HarnessInventoryChips` (header rollup), `HarnessArtifactRow` (one artifact) and
   `HarnessArtifactsSection` (the collapsible drill-down). Every export is
-  hook-free; expansion state lives in `agentbridge-page.tsx`.
+  hook-free; expansion state lives in `agentbridge-page-state.ts`.
 
 ### Registry declarations
 
@@ -138,7 +138,7 @@ of its `ns-map-<namespace>` skills.
   `{ status: "error", error }`.
 - An **unknown provider id** throws (project convention for invalid programmer
   input) rather than returning an error result; the rejected `invoke` is turned
-  back into an error result by `loadHarnessInventory` in the renderer.
+  back into an error result by the page state in the renderer.
 
 ## Security posture
 
@@ -293,19 +293,19 @@ the 4096-byte window; only the head parsing differs, selected by
 ## Refresh
 
 The agent mutates these files inside a terminal tab the extension does not
-observe, so `agentbridge-page.tsx` rescans on mount, cluster switch, provider
+observe, so the page state (`agentbridge-page-state.ts`) rescans on mount, cluster switch, provider
 switch, the transition into `ready`, after a successful Reset, on `window` focus
 and on `document` `visibilitychange` → visible, plus the explicit Refresh and
 Retry buttons. There is no `fs.watch` and no polling.
 
 Every one of those paths goes through the same `refreshInventory` function:
 
-- Scans are coalesced by `shouldRefresh` within 2 seconds of the last successful
-  scan. Only the Refresh and Retry buttons pass `force` and bypass it.
-- `lastScanAt` is written only when the result is `ok` (`opensCoalesceWindow`): a
+- Scans are coalesced within 2 seconds (`REFRESH_COALESCE_MS`) of the last
+  successful scan. Only the Refresh and Retry buttons pass `force` and bypass it.
+- `lastScanAt` is written only when the result is `ok`: a
   failed scan must stay immediately retryable rather than opening a window that
   swallows the next focus.
-- `shouldRefresh` also suppresses a non-forced scan while one is in flight.
+- A non-forced scan is also suppressed while one is in flight.
   Restoring the window fires `focus` and `visibilitychange` in the same tick, and
   `lastScanAt` is only written on completion, so without that flag both requests
   reach the main process, which runs each scan in full regardless of the
@@ -317,10 +317,10 @@ Every one of those paths goes through the same `refreshInventory` function:
   the gate shut.
 - A selection change also clears the inventory, the loading flag and the expanded
   state, so the previous provider's numbers are never shown against the new one.
-- The inventory keeps its own request counter (bumping the page's `generation`
-  would cancel the in-flight provider check) and additionally compares the page's
-  `currentRequest` ref, so a focus handler left over from an earlier selection is
-  a no-op and a superseded response is discarded without leaving the spinner
+- The inventory keeps its own request token, separate from the provider
+  check's (sharing one would let a scan cancel an in-flight check). The focus and
+  visibility handlers read the live state, so none is left over from an earlier
+  selection, and a superseded response is discarded without leaving the spinner
   running.
 
 ## Adding a provider or a root
@@ -386,17 +386,20 @@ above for what "with certainty" has to cover.
   shaped `description: SUPER-SECRET-BODY` in a file with no closing delimiter,
   because a canary containing no `:` would pass by construction.
 - `src/renderer/harness-inventory.test.ts` — age ladder boundaries, chip labels,
-  the truncated total label, summary ordering/omission, the refresh decision
-  (coalescing, in-flight suppression, forced bypass, and which results open the
-  window), and the `loadHarnessInventory` stale and error paths.
+  the truncated total label, and summary ordering/omission.
+- `src/renderer/agentbridge-page-state.test.ts` — the refresh behaviour through
+  the page-state interface, with a fake `invoke` that holds every call until the
+  test answers it: coalescing, one scan for a same-tick focus and visibility
+  change, forced bypass, failed scans staying retryable, overlapping scans,
+  selection changes orphaning a scan, and Reset rescanning.
 - `src/renderer/harness-artifacts-section.test.tsx` — Vitest runs in the `node`
   environment (no DOM, no React Testing Library), so the hook-free components are
   invoked as plain functions and the returned element tree is inspected. The
   `renderedText` helper *invokes nested function components*; without that,
   assertions about anything one component deep pass vacuously.
-- `src/renderer/agentbridge-page.tsx` has no unit test (stateful `observer`
-  component, no DOM), so the wiring is covered by `pnpm type:check` and a manual
-  smoke test in Freelens.
+- `src/renderer/agentbridge-page.tsx` only renders and forwards to the page
+  state; it has no unit test, so its wiring is covered by `pnpm type:check` and
+  a manual smoke test in Freelens.
 
 ## Known limitations
 

@@ -10,9 +10,9 @@
 ## Structure
 
 - `src/common/`
-  - Shared provider registry, IPC channel names (`ipc-channels.ts`) and result types, and normalized extension settings.
+  - Shared provider registry, the typed IPC contract (`ipc-channels.ts`: channel names, per-channel arguments and results, `ActionResult`), and normalized extension settings.
 - `src/main/index.ts`
-  - Main entry point; in `onActivate` creates `AgentBridgeMainIpc` (a `Main.Ipc` subclass) and registers every channel of `ipcChannels` on it; `onDeactivate` calls `resetInstance`.
+  - Main entry point; in `onActivate` creates `AgentBridgeMainIpc` (a `Main.Ipc` subclass) and registers one handler per channel from a map typed `IpcHandlers`, so a handler that drifts from the contract fails to compile; reset errors become an `ActionResult` here. `onDeactivate` calls `resetInstance`.
 - `src/main/provider-files.ts`
   - Creates isolated workspaces, seeds and resets managed files from the embedded scaffolds, validates declared paths, and exposes safe file I/O.
 - `src/main/scaffold-source.ts`
@@ -28,11 +28,15 @@
 - `src/renderer/index.tsx`
   - Renderer entry point; creates the renderer `Ipc` in `onActivate`, and registers the cluster page (wrapped by `withPageErrorBoundary`), sidebar menu, and app preferences.
 - `src/renderer/ipc.ts`
-  - `Renderer.Ipc` subclass and the `invoke` function every renderer module uses to reach main.
+  - `Renderer.Ipc` subclass and the typed `invoke` (`IpcInvoke`) every renderer module uses to reach main; the one place the host's `Promise<any>` is trusted to match the contract.
 - `src/renderer/components/`
   - Error boundary and error page from the extension template; a render error replaces the cluster page, not the cluster's whole main area.
+- `src/renderer/agentbridge-page-state.ts`
+  - React-free page state: the active cluster's selected provider, its readiness check, the workspace inventory scan (coalescing, in-flight gate, stale-result tokens), and the reveal/open/reset actions. Takes `invoke`, storage and a clock; the page subscribes with `useSyncExternalStore`.
 - `src/renderer/agentbridge-page.tsx`
-  - Page state coordinator for active cluster, provider selection, readiness, editing, reset, and launch actions.
+  - Renders the page state, forwards user intent to it, asks for Reset confirmation, shows notifications, and launches sessions.
+- `src/renderer/provider-selection.ts`
+  - Per-cluster provider selection in `localStorage`.
 - `src/renderer/provider-file-editor.tsx`, `code-editor.tsx`, `editor-language.ts`
   - Declared-file editor with debounced IPC saves; `CodeEditor`, a Monaco editor on the host's Monaco instance (`import { editor } from "monaco-editor"`, mapped to the host global) with the host theme; and the map from a declared file's syntax to a language id the host's Monaco can show.
 - `src/renderer/launch-session.ts`, `renderer-launch.ts`, `get-launch-command.ts`
@@ -40,7 +44,7 @@
 - `src/renderer/capability-hints.ts`, `capabilities-section.tsx`
   - Data-driven capability registry and generic capability UI.
 - `src/renderer/harness-inventory.ts`, `harness-artifacts-section.tsx`
-  - Inventory view logic and the workspace artifacts panel.
+  - Inventory view formatting (chips, ages, totals) and the workspace artifacts panel.
 - `src/**/*.test.{ts,tsx}`, `test/freelens-extensions.ts`
   - Vitest unit tests and Freelens host stub (`Main`/`Renderer` `LensExtension` and `Ipc`, `Common.App`, `Common.logger`, and the renderer members the tests use).
 - `integration/__tests__/`
@@ -78,12 +82,13 @@
 - `AgentBridgeProvider`: registry entry defining executable, probe/launch arguments, docs, editable files, and reset scope.
 - `EditorDefinition`: declared provider file contract containing path, title, syntax, role, and optional scaffold source. `language` is a syntax name (`json`, `markdown`, `toml`, `typescript`), not a Monaco language id; the renderer maps it. Providers declare as many editors as their native layout needs; Pi declares four, because its guardrail hook and its settings are separate files.
 - `ProviderCheckResult` / `ProviderLoadResult`: readiness state passed from process probe through renderer UI.
+- `AgentBridgePageState`: the page's state module; its interface (`setCluster`, `selectProvider`, `retry`, `refreshInventory`, `reset`, ...) is also its test surface, driven with a fake `invoke` in Node.
 - `ExtensionSettings`: normalized probe timeout and external editor command/URI scheme.
 - `LaunchSessionDeps`: small adapter boundary between framework-independent launch timing and Freelens terminal APIs.
 - `CapabilityHint`: data-only capability description whose provider-specific invocation controls applicability.
 - `ArtifactSource`: registry entry declaring, per artifact kind, the workspace-relative roots scanned for the inventory and their directory layout. A kind may be omitted when the CLI has no such concept — Pi declares skills only, since it has no sub-agents — and the renderer needs no branch for it, because `summarizeInventory` already keeps only groups with `count > 0`.
 - `HarnessArtifact` / `HarnessArtifactGroup`: normalized inventory record and its derived per-kind rollup (count, mtime range, truncation).
-- `ipcChannels` (`src/common/ipc-channels.ts`): explicit renderer/main IPC boundary for all privileged operations. Names are unprefixed; the host prefixes them per extension and removes the handlers on deactivation.
+- `IpcContract` / `ipcChannels` (`src/common/ipc-channels.ts`): explicit renderer/main IPC boundary for all privileged operations. `IpcContract` maps each channel to its arguments and result; `IpcInvoke` (renderer) and `IpcHandlers` (main) are derived from it, so neither side casts. Arguments are still untrusted at runtime and validated by main. Names are unprefixed; the host prefixes them per extension and removes the handlers on deactivation.
 
 ## External Dependencies
 

@@ -135,7 +135,7 @@ describe("AgentBridgeMainExtension", () => {
     expect(mocks.createIpc).toHaveBeenCalledTimes(2);
   });
 
-  it("returns reset errors to renderer", () => {
+  it("returns reset errors to renderer", async () => {
     mocks.resetProvider.mockImplementation(() => {
       throw new Error("Unsupported AI CLI provider: unknown");
     });
@@ -143,7 +143,7 @@ describe("AgentBridgeMainExtension", () => {
 
     extension.onActivate();
 
-    expect(getHandler(ipcChannels.resetProvider)({}, "cluster-1", "unknown")).toEqual({
+    await expect(getHandler(ipcChannels.resetProvider)({}, "cluster-1", "unknown")).resolves.toEqual({
       ok: false,
       error: "Unsupported AI CLI provider: unknown",
     });

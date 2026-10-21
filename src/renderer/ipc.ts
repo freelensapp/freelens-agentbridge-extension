@@ -15,4 +15,7 @@ export function deactivateIpc(): void {
   AgentBridgeRendererIpc.resetInstance();
 }
 
+// The host types `invoke` as `Promise<any>`; the contract in `ipc-channels.ts`
+// is what main's handlers are typed against, so this is the one place the
+// result is trusted to match it.
 export const invoke: IpcInvoke = (channel, ...args) => AgentBridgeRendererIpc.getInstance().invoke(channel, ...args);

@@ -6,12 +6,13 @@ Coding conventions for this project. Follow these when writing or reviewing code
 - Name source files in kebab-case; colocate tests as `<module>.test.ts` or `<module>.test.tsx`.
 - Use camelCase for functions, variables, and local constants; use PascalCase for classes, components, interfaces, and types.
 - Use UPPER_SNAKE_CASE for fixed shared constants such as timeouts and regexes.
-- Name IPC channels in kebab-case in `ipcChannels` (`src/common/ipc-channels.ts`), without an extension prefix; the host adds one.
+- Name IPC channels in kebab-case in `ipcChannels` (`src/common/ipc-channels.ts`), without an extension prefix; the host adds one. A new channel goes into `IpcContract` (arguments and result) and `ipcChannels`, then gets its handler in `src/main/index.ts`; the compiler flags each step that is missing.
 - Prefer domain names such as `providerId`, `clusterId`, and `workdir` consistently across process boundaries.
 
 ## Structure
 - Put process-independent types and logic in `src/common/`, Electron and filesystem code in `src/main/`, and React UI in `src/renderer/`. Renderer and common code import no Node builtins and no `electron`; use `Common.App` (for example `Common.App.isWindows`) instead of `process`.
-- Reach main from the renderer only through `invoke` in `src/renderer/ipc.ts`; register handlers only on `AgentBridgeMainIpc` in `src/main/index.ts`.
+- Reach main from the renderer only through `invoke` in `src/renderer/ipc.ts`; register handlers only on `AgentBridgeMainIpc` in `src/main/index.ts`. Do not cast `invoke` results: the contract types them. Return `ActionResult` for actions whose failure the user can retry.
+- Keep renderer page logic in React-free modules that take `invoke`, storage and a clock (see `agentbridge-page-state.ts`); components render and forward intent.
 - Keep provider definitions centralized in `src/common/agentbridge-providers.ts`; derive provider IDs and result unions from that registry.
 - Keep provider scaffold assets under `src/main/scaffolds/<provider>/`; they are embedded into the main bundle, so read them through `src/main/scaffold-source.ts`, never from disk. Build output belongs in `dist/`.
 - Import host modules (`react`, `mobx`, `mobx-react`, `monaco-editor`, ...) by their package names; the build maps them to the host's instances. Do not add a second copy of a host module as a runtime dependency.

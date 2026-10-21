@@ -43,7 +43,7 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
     void invoke(ipcChannels.readProviderFile, clusterId, providerId, editor.path)
       .then((result) => {
         if (cancelled) return;
-        setContent((result as { content: string }).content);
+        setContent(result.content);
         setLoaded(true);
       })
       .catch((err: unknown) => {
