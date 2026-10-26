@@ -16,12 +16,16 @@ MD032: false
 MD033:
   allowed_elements:
     - br
+    - div
     - img
     - picture
     - source
     - video
     - details
     - summary
+# Bare URLs: GitHub renders a bare user-attachments URL on its own line as a
+# video player, while it strips <video> tags from Markdown.
+MD034: false
 # Emphasis used instead of a header
 MD036: false
 # First line in a file should be a top-level heading

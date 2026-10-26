@@ -7,7 +7,7 @@ Coding conventions for this project. Follow these when writing or reviewing code
 - Use camelCase for functions, variables, and local constants; use PascalCase for classes, components, interfaces, and types.
 - Use UPPER_SNAKE_CASE for fixed shared constants such as timeouts and regexes.
 - Name IPC channels in kebab-case in `ipcChannels` (`src/common/ipc-channels.ts`), without an extension prefix; the host adds one. A new channel goes into `IpcContract` (arguments and result) and `ipcChannels`, then gets its handler in `src/main/index.ts`; the compiler flags each step that is missing.
-- Prefer domain names such as `providerId`, `clusterId`, and `workdir` consistently across process boundaries.
+- Prefer domain names such as `providerId`, `clusterId`, and `workdir` consistently across process boundaries. In code, `workdir` is the absolute path of a workspace; user-facing text says "workspace" (see `GLOSSARY.md`).
 
 ## Structure
 - Put process-independent types and logic in `src/common/`, Electron and filesystem code in `src/main/`, and React UI in `src/renderer/`. Renderer and common code import no Node builtins and no `electron`; use `Common.App` (for example `Common.App.isWindows`) instead of `process`.

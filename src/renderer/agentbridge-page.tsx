@@ -199,7 +199,7 @@ export const AgentBridgePage = observer(function AgentBridgePage() {
                   />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
-                  <Renderer.Component.Button outlined label="Reveal workdir" onClick={() => void reveal()} />
+                  <Renderer.Component.Button outlined label="Reveal workspace" onClick={() => void reveal()} />
                   <Renderer.Component.Button outlined onClick={() => void openInEditor()}>
                     <Renderer.Component.Icon material="code" small />
                     Open in editor
