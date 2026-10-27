@@ -79,16 +79,9 @@
         "minor"
       ],
       "enabled": false
-    },
-    // postupdate script
-    {
-      "matchDepNames": [
-        "@biomejs/biome",
-      ],
-      "postUpdateOptions": [
-        "runScripts"
-      ]
     }
+    // @biomejs/biome updates need `biome migrate`: it is run by the
+    // biome-migrate workflow after the update lands on main
   ],
   "customManagers": [
     // additional engine field in package.json
