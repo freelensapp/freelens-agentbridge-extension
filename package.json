@@ -1,6 +1,6 @@
 {
   "name": "@freelensapp/agentbridge-extension",
-  "version": "2.0.0-0",
+  "version": "2.0.0",
   "description": "Freelens extension for per-cluster AI CLI sessions",
   "repository": {
     "type": "git",
