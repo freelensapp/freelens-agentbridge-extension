@@ -158,9 +158,8 @@ describe("openWorkspaceInEditor", () => {
       platform: "linux",
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("spawn code ENOENT");
-    expect(result.error).toContain("no handler");
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("spawn code ENOENT") });
+    expect(result).toMatchObject({ error: expect.stringContaining("no handler") });
   });
 
   it("rejects a workdir whose sessions root escapes user data", async () => {

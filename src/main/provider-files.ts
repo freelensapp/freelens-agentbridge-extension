@@ -1,5 +1,4 @@
 import {
-  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -12,7 +11,9 @@ import {
 import path from "node:path";
 import { getAgentBridgeProvider } from "../common/agentbridge-providers";
 import { computeProviderWorkdir } from "./get-provider-workdir";
-import { resolveProviderScaffold } from "./scaffold-source";
+import { readScaffoldFile } from "./scaffold-source";
+
+import type { ActionResult } from "../common/ipc-channels";
 
 type OpenPath = (path: string) => Promise<string>;
 
@@ -144,12 +145,10 @@ export function prepareProviderWorkspace(
   userData: string,
   clusterId: string,
   providerId: string,
-  explicitScaffoldsRoot?: string,
 ): { workdir: string; seeded: boolean } {
   const provider = getAgentBridgeProvider(providerId);
   migrateLegacyOpenCodeWorkspace(userData, clusterId, provider.id);
   const workdir = getWorkdir(userData, clusterId, provider.id);
-  const scaffold = resolveProviderScaffold(provider.id, explicitScaffoldsRoot);
   let seeded = false;
 
   for (const editor of provider.editors) {
@@ -157,7 +156,7 @@ export function prepareProviderWorkspace(
     if (existsSync(target)) continue;
     mkdirSync(path.dirname(target), { recursive: true });
     const sourceRel = (editor as { source?: string }).source ?? editor.path;
-    copyFileSync(path.join(scaffold, ...sourceRel.split(/[\\/]+/)), target);
+    writeFileSync(target, readScaffoldFile(provider.id, sourceRel), "utf8");
     seeded = true;
   }
 
@@ -200,7 +199,6 @@ export function resetProvider(
   userData: string,
   clusterId: string,
   providerId: string,
-  explicitScaffoldsRoot?: string,
 ): { workdir: string; seeded: boolean } {
   const provider = getAgentBridgeProvider(providerId);
   const workdir = getWorkdir(userData, clusterId, provider.id);
@@ -210,7 +208,7 @@ export function resetProvider(
     if (existsSync(target)) rmSync(target, { force: true });
   }
 
-  return prepareProviderWorkspace(userData, clusterId, provider.id, explicitScaffoldsRoot);
+  return prepareProviderWorkspace(userData, clusterId, provider.id);
 }
 
 // Resolve the provider workdir and verify it is contained inside the sessions
@@ -231,7 +229,7 @@ export async function revealProviderWorkspace(
   clusterId: string,
   providerId: string,
   openPath: OpenPath,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<ActionResult> {
   try {
     const workdir = resolveVerifiedWorkdir(userData, clusterId, providerId);
 

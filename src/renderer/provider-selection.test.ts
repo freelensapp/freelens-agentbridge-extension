@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  loadProvider,
-  loadSelectedProvider,
-  type ProviderLoadResult,
-  type StorageLike,
-  saveSelectedProvider,
-} from "./provider-selection";
+import { loadSelectedProvider, type StorageLike, saveSelectedProvider } from "./provider-selection";
 
 class MemoryStorage implements StorageLike {
   readonly values = new Map<string, string>();
@@ -19,16 +13,6 @@ class MemoryStorage implements StorageLike {
     this.values.set(key, value);
   }
 }
-
-// The ready arm carries no `error`, so narrow before matching on the message.
-function errorOf(result: ProviderLoadResult | undefined): string {
-  if (!result || result.status === "ready") throw new Error(`expected a failure, got ${result?.status}`);
-
-  return result.error;
-}
-
-const checkChannel = "agentbridge-extension:check-provider";
-const prepareChannel = "agentbridge-extension:prepare-workspace";
 
 describe("provider selection", () => {
   it("has no selection on first visit", () => {
@@ -53,123 +37,6 @@ describe("provider selection", () => {
 
     expect(loadSelectedProvider("cluster-a", storage)).toBeUndefined();
     expect(storage.removeItem).toHaveBeenCalledWith(key);
-  });
-
-  it("probes and prepares only selected ready provider", async () => {
-    const invoke = vi
-      .fn()
-      .mockResolvedValueOnce({ status: "ready", version: "1.2.3" })
-      .mockResolvedValueOnce({ workdir: "/work/cluster-a", seeded: false });
-
-    await expect(loadProvider("cluster-a", "claude", invoke, () => true)).resolves.toEqual({
-      status: "ready",
-      version: "1.2.3",
-      workdir: "/work/cluster-a",
-    });
-    expect(invoke).toHaveBeenNthCalledWith(1, checkChannel, "claude");
-    expect(invoke).toHaveBeenNthCalledWith(2, prepareChannel, "cluster-a", "claude");
-  });
-
-  it("does not prepare missing providers", async () => {
-    const invoke = vi.fn().mockResolvedValue({ status: "missing", error: "not found" });
-
-    await expect(loadProvider("cluster-a", "opencode", invoke, () => true)).resolves.toEqual({
-      status: "missing",
-      error: "not found",
-    });
-    expect(invoke).toHaveBeenCalledTimes(1);
-  });
-
-  // Issue #23: the renderer offered Codex while the main process still ran the
-  // bundle it loaded at startup, and the raw throw reached the status line as
-  // "OpenAI Codex CLI: Error invoking remote method ... Unsupported AI CLI
-  // provider: codex" — which reads as a bug in the extension, not as "restart".
-  it("turns a provider the main process has never heard of into the restart instruction", async () => {
-    const invoke = vi
-      .fn()
-      .mockRejectedValue(
-        new Error(
-          "Error invoking remote method 'agentbridge-extension:check-provider': Error: Unsupported AI CLI provider: codex",
-        ),
-      );
-    const result = await loadProvider("cluster-a", "codex", invoke, () => true);
-
-    expect(result?.status).toBe("error");
-    const error = errorOf(result);
-
-    expect(error).toMatch(/restart/i);
-    expect(error).toMatch(/window reload only updates the UI/);
-    expect(error).not.toMatch(/Unsupported AI CLI provider/);
-    // The page already renders `${provider.name}: ${error}`, so repeating the
-    // name here would read as "OpenAI Codex CLI: OpenAI Codex CLI ...".
-    expect(error).not.toMatch(/Codex/);
-  });
-
-  it("applies the same treatment to a failed workspace preparation", async () => {
-    const invoke = vi
-      .fn()
-      .mockResolvedValueOnce({ status: "ready", version: "1.2.3" })
-      .mockRejectedValueOnce(new Error("Error: Unsupported AI CLI provider: codex"));
-    const result = await loadProvider("cluster-a", "codex", invoke, () => true);
-
-    expect(result?.status).toBe("error");
-    expect(errorOf(result)).toMatch(/window reload only updates the UI/);
-  });
-
-  it("reports an unrelated probe failure verbatim", async () => {
-    const invoke = vi.fn().mockRejectedValue(new Error("EACCES: permission denied"));
-
-    await expect(loadProvider("cluster-a", "claude", invoke, () => true)).resolves.toEqual({
-      status: "error",
-      error: "EACCES: permission denied",
-    });
-  });
-
-  it("drops result when selection changes after probe", async () => {
-    const invoke = vi.fn().mockResolvedValue({ status: "ready", version: "1.2.3" });
-
-    await expect(loadProvider("cluster-a", "opencode", invoke, () => false)).resolves.toBeUndefined();
-    expect(invoke).toHaveBeenCalledTimes(1);
-  });
-
-  it("drops an in-flight probe result when selection changes", async () => {
-    let isCurrent = true;
-    let resolveCheck: (result: { status: "ready"; version: string }) => void;
-    const check = new Promise<{ status: "ready"; version: string }>((resolve) => {
-      resolveCheck = resolve;
-    });
-    const invoke = vi.fn().mockReturnValue(check);
-    const result = loadProvider("cluster-a", "opencode", invoke, () => isCurrent);
-
-    isCurrent = false;
-    resolveCheck!({ status: "ready", version: "1.2.3" });
-
-    await expect(result).resolves.toBeUndefined();
-    expect(invoke).toHaveBeenCalledTimes(1);
-  });
-
-  it("drops result when selection changes after preparation", async () => {
-    const isCurrent = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false);
-    const invoke = vi
-      .fn()
-      .mockResolvedValueOnce({ status: "ready", version: "1.2.3" })
-      .mockResolvedValueOnce({ workdir: "/work/cluster-a", seeded: false });
-
-    await expect(loadProvider("cluster-a", "opencode", invoke, isCurrent)).resolves.toBeUndefined();
-    expect(invoke).toHaveBeenCalledTimes(2);
-  });
-
-  it("only probes newly selected provider", async () => {
-    const invoke = vi
-      .fn()
-      .mockResolvedValueOnce({ status: "missing", error: "not found" })
-      .mockResolvedValueOnce({ status: "missing", error: "not found" });
-
-    await loadProvider("cluster-a", "opencode", invoke, () => true);
-    await loadProvider("cluster-a", "claude", invoke, () => true);
-
-    expect(invoke).toHaveBeenNthCalledWith(1, checkChannel, "opencode");
-    expect(invoke).toHaveBeenNthCalledWith(2, checkChannel, "claude");
   });
 
   it("tolerates unavailable storage", () => {

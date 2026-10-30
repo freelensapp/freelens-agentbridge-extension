@@ -19,6 +19,11 @@ Contains pitfalls encountered by previous agents:
 - read it when you have doubts or get stuck
 - append a concise gotcha at the end of your session when you discover one
 
+### GLOSSARY.md
+
+Defines the project's domain vocabulary (workspace, session, guardrails, ...)
+and the words to avoid. Read it when naming things in code, UI, or docs.
+
 ### ARCHITECTURE.md
 
 Describes project structure, data flow, key abstractions, dependencies, and architectural constraints.

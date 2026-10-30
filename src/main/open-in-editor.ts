@@ -1,6 +1,8 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { resolveVerifiedWorkdir } from "./provider-files";
 
+import type { ActionResult } from "../common/ipc-channels";
+
 // Minimal shape of the child process we rely on: an event emitter that fires
 // "spawn" on success and "error" on failure (e.g. ENOENT when the editor
 // binary is not on PATH), "exit" with the process exit code, plus unref() so
@@ -93,7 +95,7 @@ export async function openWorkspaceInEditor(
   clusterId: string,
   providerId: string,
   deps: OpenInEditorDeps,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<ActionResult> {
   const { editorCommand, editorUriScheme, spawn = nodeSpawn as unknown as Spawn, openExternal } = deps;
   const platform = deps.platform ?? process.platform;
 

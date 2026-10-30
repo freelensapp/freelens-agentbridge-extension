@@ -1,5 +1,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import { AgentBridgePage } from "./agentbridge-page";
+import { withPageErrorBoundary } from "./components/error-boundary";
+import { activateIpc, deactivateIpc } from "./ipc";
 import { EditorCommandHint, EditorCommandSetting, ProbeTimeoutHint, ProbeTimeoutSetting } from "./settings-page";
 
 const {
@@ -11,12 +13,22 @@ function AgentBridgeIcon(props: Renderer.Component.IconProps) {
 }
 
 export default class AgentBridgeRendererExtension extends Renderer.LensExtension {
-  clusterPages = [
+  onActivate() {
+    activateIpc(this);
+  }
+
+  onDeactivate() {
+    deactivateIpc();
+  }
+
+  // The page renders inside an error boundary, so an error it throws replaces
+  // the page rather than the cluster's whole main area.
+  clusterPages: Renderer.LensExtension["clusterPages"] = [
     {
       id: "agentbridge",
-      components: { Page: () => <AgentBridgePage extension={this} /> },
+      components: { Page: () => <AgentBridgePage /> },
     },
-  ];
+  ].map((registration) => withPageErrorBoundary(this, registration));
 
   clusterPageMenus = [
     {

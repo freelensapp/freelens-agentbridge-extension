@@ -1,20 +1,11 @@
 import { HARNESS_ARTIFACT_KIND_ORDER } from "../common/harness-artifacts";
 import { CAPABILITY_KIND_LABEL, defaultIconForKind } from "./capability-hints";
-import { describeStaleMainProcessError, FULL_RESTART_REMEDY } from "./stale-main-process";
 
-import type { HarnessArtifactGroup, HarnessArtifactKind, HarnessInventoryResult } from "../common/harness-artifacts";
-import type { IpcInvoke } from "./provider-selection";
+import type { HarnessArtifactGroup, HarnessArtifactKind } from "../common/harness-artifacts";
 
 // React-free view logic for the workspace artifact inventory. Kept separate from
 // harness-artifacts-section.tsx so it is unit-testable in the node test
 // environment, which has no DOM.
-
-const CHANNEL_PREFIX = "agentbridge-extension:";
-
-// Refreshes fire on mount, provider switch, reset, window focus and tab
-// visibility, so several can land at once; anything inside this window after a
-// successful scan reuses the result.
-const REFRESH_COALESCE_MS = 2_000;
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -97,70 +88,4 @@ export function totalLabel(groups: readonly HarnessArtifactGroup[]): string {
   const total = groups.reduce((count, group) => count + group.count, 0);
 
   return `${total}${groups.some((group) => group.truncated) ? "+" : ""}`;
-}
-
-export interface RefreshRequest {
-  // Completion time of the last *successful* scan; undefined until one lands.
-  readonly lastScanAtMs: number | undefined;
-  readonly nowMs: number;
-  // A scan whose response has not come back yet.
-  readonly scanInFlight: boolean;
-  // The explicit Refresh/Retry buttons, which must never be swallowed.
-  readonly force: boolean;
-}
-
-export function shouldRefresh({ lastScanAtMs, nowMs, scanInFlight, force }: RefreshRequest): boolean {
-  if (force) return true;
-  // Restoring the window fires `focus` and `visibilitychange` in the same tick.
-  // `lastScanAtMs` is only written on completion, so the coalescing window below
-  // cannot catch the second one and both scans would run in the main process in
-  // full; cancelling the loser in the renderer happens far too late.
-  if (scanInFlight) return false;
-
-  return lastScanAtMs === undefined || nowMs - lastScanAtMs >= REFRESH_COALESCE_MS;
-}
-
-// The coalescing window follows the last *successful* scan (spec §4.6). An
-// error result is truthy, so gating on the result alone would let a failure open
-// the window and suppress the automatic retry a focus change would otherwise
-// trigger.
-export function opensCoalesceWindow(result: HarnessInventoryResult | undefined): boolean {
-  return result?.status === "ok";
-}
-
-// Rebuilding or updating while Freelens is open leaves a new renderer talking to
-// the main process bundle loaded at startup, which is missing any channel — or
-// any provider — added since. See stale-main-process.ts for why the renderer
-// cannot recover and can only name the remedy.
-export function describeInventoryError(message: string): string {
-  return describeStaleMainProcessError(
-    message,
-    `Workspace artifacts need a full Freelens restart: this session's main process started before the extension gained the scanner. ${FULL_RESTART_REMEDY}`,
-  );
-}
-
-// Mirrors loadProvider in provider-selection.ts: isCurrent() gates every state
-// transition so a response for a superseded cluster/provider is discarded.
-export async function loadHarnessInventory(
-  clusterId: string,
-  providerId: string,
-  invoke: IpcInvoke,
-  isCurrent: () => boolean,
-): Promise<HarnessInventoryResult | undefined> {
-  try {
-    const result = (await invoke(
-      `${CHANNEL_PREFIX}list-provider-artifacts`,
-      clusterId,
-      providerId,
-    )) as HarnessInventoryResult;
-
-    return isCurrent() ? result : undefined;
-  } catch (error) {
-    if (!isCurrent()) return undefined;
-
-    return {
-      status: "error",
-      error: describeInventoryError(error instanceof Error ? error.message : String(error)),
-    };
-  }
 }

@@ -2,9 +2,11 @@
 
 ## Prerequisites
 
-- Node.js >= 22
-- pnpm 10
-- Freelens >= 1.8.0
+- Node.js 24 (the exact version is in `.nvmrc`; `nvm install` or
+  `mise install` picks it up, and `mise.toml`/`mise.lock` pin it for mise)
+- pnpm 12 (`corepack install` installs the version in `packageManager`)
+- Freelens >= 2.0.0. This line of the extension targets the v2 extension API
+  only; Freelens 1.x is served by the 1.x releases.
 - One or more supported providers on `PATH`: [OpenCode](https://opencode.ai/docs/),
   [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup),
   [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli),
@@ -22,100 +24,100 @@ pnpm install
 ## Build
 
 ```sh
-pnpm build        # emits out/main/index.js + out/renderer/index.js
-pnpm dev          # electron-vite dev watch (if wired)
+pnpm build        # emits dist/main.js, dist/renderer.js and dist/renderer.css
+pnpm dev          # both builds in watch mode, for a directory install
 ```
+
+`pnpm build` runs `vite build` (renderer, empties `dist/`) and then
+`vite build --mode main` (main, next to it). Both are ES modules with source
+maps; nothing is minified. Neither `pnpm build` nor `pnpm dev` type-checks;
+run `pnpm type:check` for that.
 
 ## Test
 
 ```sh
 pnpm test:unit    # vitest
-pnpm type:check   # tsc --noEmit
+pnpm test:integration  # vitest, against a running Freelens dev (see below)
+pnpm type:check   # tsc, one program per runtime plus tests, integration tests, tooling and environment tests
 pnpm lint:check   # biome
+pnpm knip:check   # unused files and dependencies, development and production
+pnpm trunk:check  # the formats Biome does not cover (Markdown, YAML, workflows)
 ```
 
-The renderer page is a thin shell over Freelens public APIs and is
-smoke-tested manually — no component unit tests.
+Component tests that need a DOM opt into jsdom per file with
+`// @vitest-environment jsdom` and use React Testing Library. The cluster page
+itself is a thin shell over Freelens public APIs and is smoke-tested manually.
+
+The integration test in `integration/__tests__/` runs here, under its own
+Vitest (`pnpm test:integration`), against Freelens dev started with `pnpm dev`
+from a freelensapp/freelens checkout, which it attaches to over CDP on port
+9223. It installs this checkout in place and checks that the extension is
+enabled with no error and that its preferences load from the main process.
+The `Integration tests` workflow runs it the same way against the Freelens
+`v2.0.0` tag.
 
 ## Pack and install
 
-### One-shot
+### Development loop
+
+Build once, then open Freelens -> Extensions (`Ctrl+Shift+E`), enter the path
+of your checkout (the directory with `package.json`) and press Install.
+Freelens runs the extension from `dist/` in that directory and lists it with
+"development" in the version column. Then run:
+
+```sh
+pnpm dev
+```
+
+It rebuilds on every source change, and Freelens reloads the extension after
+each rebuild — main process and renderer both, without a restart and without
+packing. Stop it with `Ctrl+C`. A change to `main` or `renderer` in
+`package.json` needs Freelens restarted once.
+
+Freelens 2 runs `onDeactivate` and then the new `onActivate` in both
+processes on every reload, and removes the IPC handlers of the old instance,
+so a new renderer never talks to a stale main process.
+
+### Tarball
 
 ```sh
 pnpm build
 pnpm pack          # produces freelensapp-agentbridge-extension-x.y.z.tgz
+pnpm pack:dev      # bumps the prerelease version, builds and packs
 ```
 
-Open Freelens → Extensions (`Ctrl+Shift+E`) → drag the `.tgz` into the
-window. Enable the extension.
-
-### Symlink for faster iteration
-
-**macOS / Linux:**
-
-```sh
-ln -s /full/path/to/freelens-agentbridge-extension \
-  ~/.local/share/Freelens/extensions/freelens-agentbridge-extension
-```
-
-**Windows (junction):**
-
-```powershell
-New-Item -ItemType Junction -Path "$env:LOCALAPPDATA\Freelens\extensions\freelens-agentbridge-extension" -Target "C:\full\path\to\freelens-agentbridge-extension"
-```
-
-Then `pnpm build` and reload Freelens (`Ctrl+R` / `Cmd+R`).
-
-> **A reload only picks up `src/renderer/` changes.** Freelens re-requires the
-> renderer entry on every window reload, but the main process keeps its
-> extension instance for the life of the app and never calls `onActivate`
-> again — so nothing under `src/main/` is reloaded, and IPC handlers registered
-> there stay as they were at startup. After changing main-process code, **quit
-> Freelens completely and reopen it**. The symptom of skipping this is a new
-> renderer invoking a channel the old main process never registered:
->
-> ```text
-> Error invoking remote method 'agentbridge-extension:<channel>':
-> Error: No handler registered for 'agentbridge-extension:<channel>'
-> ```
->
-> Adding a provider to `src/common/agentbridge-providers.ts` produces the same
-> failure through a channel that *does* exist — the handler is there, its
-> registry is older than the id the renderer just handed it:
->
-> ```text
-> Error invoking remote method 'agentbridge-extension:check-provider':
-> Error: Unsupported AI CLI provider: <id>
-> ```
->
-> `src/renderer/stale-main-process.ts` rewrites both into the restart
-> instruction, so a user never sees either string; you will see it in the
-> console, and the remedy is the same quit-and-reopen.
+Open Freelens -> Extensions and enter the path to the `.tgz`, or drag it
+into the window. Enable the extension.
 
 ## Debug
 
-- **Renderer errors:** `Ctrl+Shift+I` in Freelens → Console tab.
-- **Main process errors:** launch Freelens from a terminal; logs prefixed
-  `[EXTENSION]:` appear on stdout. The Extensions page also shows
-  activation errors.
+- **Renderer errors:** `Ctrl+Shift+I` in Freelens -> Console tab. A render
+  error on the cluster page is caught by the page's error boundary
+  (`src/renderer/components/error-boundary.tsx`) and shown in place of the
+  page.
+- **Main process errors:** launch Freelens from a terminal; extension logs
+  appear on stdout. The Extensions page also shows activation errors.
 
 ## Architecture
 
-Two-process Electron extension mirroring the Freelens extension model:
+Two-process Electron extension on the Freelens v2 extension API:
 
-- **Main** (`src/main/`) — registers `agentbridge-extension:` IPC handlers for
-  provider checks, workspace preparation, declared-file I/O, reset, and reveal.
-  Pure modules resolve isolated provider workdirs, seed registry scaffolds, and
-  validate file paths.
+- **Main** (`src/main/`) — registers the channels in
+  `src/common/ipc-channels.ts` on a `Main.Ipc` subclass for provider checks,
+  workspace preparation, declared-file I/O, reset, and reveal. Pure modules
+  resolve isolated provider workdirs, seed scaffolds embedded in the bundle,
+  and validate file paths.
 - **Renderer** (`src/renderer/`) — sidebar registration, provider selection,
-  the AI CLI session
-  page (MobX observer), and terminal dock tab launch via Freelens public
-  APIs. `KUBECONFIG` is inherited from the active cluster's auth proxy by
-  Freelens' built-in terminal infrastructure.
+  the AI CLI session page (MobX observer), the provider file editors on the
+  host's Monaco, and terminal dock tab launch via Freelens public APIs. It
+  reaches main through a `Renderer.Ipc` subclass (`src/renderer/ipc.ts`) and
+  never imports `electron`. `KUBECONFIG` is inherited from the active
+  cluster's auth proxy by Freelens' built-in terminal infrastructure.
 
-Host-injected globals (`@freelensapp/extensions`, `mobx`, `react`) come
-from the Freelens host. The only bundled runtime dependency is Monaco
-Editor (`monaco-editor` + `@monaco-editor/react`).
+The host provides `react`, `react-dom`, `react/jsx-runtime`, `mobx`,
+`mobx-react`, and `monaco-editor` on `globalThis.FreelensExtensionApi`; the
+build maps those imports to the globals. Everything else the extension needs
+at runtime is bundled. See [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Windows
 

@@ -1,5 +1,6 @@
 import { Main } from "@freelensapp/extensions";
-import { app, ipcMain, shell } from "electron";
+import { app, shell } from "electron";
+import { ipcChannels } from "../common/ipc-channels";
 import { checkProvider } from "./check-provider";
 import { readExtensionSettings, writeExtensionSettings } from "./extension-settings-store";
 import { listProviderArtifacts } from "./harness-artifacts";
@@ -12,78 +13,72 @@ import {
   writeProviderFile,
 } from "./provider-files";
 
-// ponytail: extension uses raw electron ipcMain directly instead of the
-// Main.Ipc abstraction exported by @freelensapp/extensions. Reason: Main.Ipc
-// is published as the ABSTRACT CLASS IpcMain (not an instance); its `handle`
-// method is an instance method, so Main.Ipc.handle(...) does not typecheck
-// against @freelensapp/extensions@1.10.2's declarations. Raw ipcMain +
-// hardcoded channel prefix is the minimal working interface. Upgrade path: if
-// a future Freelens release exposes a concrete per-extension IpcMain instance
-// (e.g. `Main.Ipc.getInstance(...).handle(...)`), switch back to get the
-// auto-prefixed channel + auto-cleanup disposers. Channel prefix below is
-// unique enough to avoid collisions with other extensions.
-const CHANNEL_PREFIX = "agentbridge-extension:";
+import type { ActionResult, IpcHandlers } from "../common/ipc-channels";
 
-export default class AgentBridgeMainExtension extends Main.LensExtension {
-  async onActivate() {
-    const channels = [
-      "check-provider",
-      "prepare-workspace",
-      "read-provider-file",
-      "write-provider-file",
-      "reveal-workspace",
-      "open-in-editor",
-      "reset-provider",
-      "get-settings",
-      "set-settings",
-      "list-provider-artifacts",
-    ];
+// The host prefixes every channel with one derived from the extension's id and
+// removes the handlers when the extension is deactivated, so a reload under
+// `pnpm dev` replaces them rather than colliding with the previous build's.
+export class AgentBridgeMainIpc extends Main.Ipc {}
 
-    for (const channel of channels) ipcMain.removeHandler(`${CHANNEL_PREFIX}${channel}`);
+// Workspaces and settings stay under Electron's userData, where the v1 releases
+// kept them, so an upgrade finds the files a user already edited.
+const userData = () => app.getPath("userData");
 
-    ipcMain.handle(`${CHANNEL_PREFIX}check-provider`, (_event, providerId: string) =>
-      checkProvider(providerId, undefined, readExtensionSettings(app.getPath("userData")).probeTimeoutMs),
-    );
-    ipcMain.handle(`${CHANNEL_PREFIX}prepare-workspace`, (_event, clusterId: string, providerId: string) =>
-      prepareProviderWorkspace(app.getPath("userData"), clusterId, providerId),
-    );
-    ipcMain.handle(
-      `${CHANNEL_PREFIX}read-provider-file`,
-      (_event, clusterId: string, providerId: string, relativePath: string) =>
-        readProviderFile(app.getPath("userData"), clusterId, providerId, relativePath),
-    );
-    ipcMain.handle(
-      `${CHANNEL_PREFIX}write-provider-file`,
-      (_event, clusterId: string, providerId: string, relativePath: string, content: string) =>
-        writeProviderFile(app.getPath("userData"), clusterId, providerId, relativePath, content),
-    );
-    ipcMain.handle(`${CHANNEL_PREFIX}reveal-workspace`, (_event, clusterId: string, providerId: string) =>
-      revealProviderWorkspace(app.getPath("userData"), clusterId, providerId, shell.openPath),
-    );
-    ipcMain.handle(`${CHANNEL_PREFIX}open-in-editor`, (_event, clusterId: string, providerId: string) => {
-      const settings = readExtensionSettings(app.getPath("userData"));
-      return openWorkspaceInEditor(app.getPath("userData"), clusterId, providerId, {
+// Builds the `ActionResult` for an action whose failure the user can act on, so
+// the error reaches the renderer as data rather than as a rejected invoke.
+async function toActionResult(action: () => unknown): Promise<ActionResult> {
+  try {
+    await action();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function createHandlers(): IpcHandlers {
+  return {
+    "check-provider": (providerId) =>
+      checkProvider(providerId, undefined, readExtensionSettings(userData()).probeTimeoutMs),
+    "prepare-workspace": (clusterId, providerId) => prepareProviderWorkspace(userData(), clusterId, providerId),
+    "read-provider-file": (clusterId, providerId, relativePath) =>
+      readProviderFile(userData(), clusterId, providerId, relativePath),
+    "write-provider-file": (clusterId, providerId, relativePath, content) =>
+      writeProviderFile(userData(), clusterId, providerId, relativePath, content),
+    "reveal-workspace": (clusterId, providerId) =>
+      revealProviderWorkspace(userData(), clusterId, providerId, shell.openPath),
+    "open-in-editor": (clusterId, providerId) => {
+      const settings = readExtensionSettings(userData());
+      return openWorkspaceInEditor(userData(), clusterId, providerId, {
         editorCommand: settings.editorCommand,
         editorUriScheme: settings.editorUriScheme,
         openExternal: shell.openExternal,
       });
-    });
-    ipcMain.handle(`${CHANNEL_PREFIX}reset-provider`, (_event, clusterId: string, providerId: string) => {
-      try {
-        resetProvider(app.getPath("userData"), clusterId, providerId);
-        return { ok: true };
-      } catch (err: any) {
-        return { ok: false, error: err?.message ?? String(err) };
-      }
-    });
-    ipcMain.handle(`${CHANNEL_PREFIX}get-settings`, () => readExtensionSettings(app.getPath("userData")));
-    ipcMain.handle(`${CHANNEL_PREFIX}set-settings`, (_event, settings: unknown) =>
-      writeExtensionSettings(app.getPath("userData"), settings),
-    );
+    },
+    "reset-provider": (clusterId, providerId) => toActionResult(() => resetProvider(userData(), clusterId, providerId)),
+    "get-settings": () => readExtensionSettings(userData()),
+    // The renderer's patch is untrusted: the store normalizes whatever arrives.
+    "set-settings": (settings) => writeExtensionSettings(userData(), settings),
     // Metadata only: the scan root is always the verified workdir for this
     // cluster and provider, never a path the renderer supplies.
-    ipcMain.handle(`${CHANNEL_PREFIX}list-provider-artifacts`, (_event, clusterId: string, providerId: string) =>
-      listProviderArtifacts(app.getPath("userData"), clusterId, providerId),
-    );
+    "list-provider-artifacts": (clusterId, providerId) => listProviderArtifacts(userData(), clusterId, providerId),
+  };
+}
+
+export default class AgentBridgeMainExtension extends Main.LensExtension {
+  onActivate() {
+    const ipc = AgentBridgeMainIpc.createInstance(this);
+    const handlers = createHandlers();
+
+    for (const channel of Object.values(ipcChannels)) {
+      const handler = handlers[channel] as (...args: unknown[]) => unknown;
+
+      ipc.handle(channel, (_event, ...args) => handler(...args));
+    }
+  }
+
+  onDeactivate() {
+    // The host has already taken the handlers back out; dropping the singleton
+    // lets a later activation of this same instance register them again.
+    AgentBridgeMainIpc.resetInstance();
   }
 }

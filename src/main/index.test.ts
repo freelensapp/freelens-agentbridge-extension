@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   checkProvider: vi.fn(),
+  createIpc: vi.fn(),
   getPath: vi.fn(() => "/user-data"),
   handle: vi.fn(),
   listProviderArtifacts: vi.fn(),
@@ -11,20 +12,33 @@ const mocks = vi.hoisted(() => ({
   prepareProviderWorkspace: vi.fn(),
   readExtensionSettings: vi.fn(() => ({ probeTimeoutMs: 15_000, editorCommand: "code", editorUriScheme: "vscode" })),
   readProviderFile: vi.fn(),
-  removeHandler: vi.fn(),
+  resetIpc: vi.fn(),
   resetProvider: vi.fn(),
   revealProviderWorkspace: vi.fn(),
   writeExtensionSettings: vi.fn((_userData: string, settings: unknown) => settings),
   writeProviderFile: vi.fn(),
 }));
 
+// The host's `Main.Ipc` is a singleton per subclass, created with the
+// extension; the host prefixes the channels and removes the handlers itself.
 vi.mock("@freelensapp/extensions", () => ({
-  Main: { LensExtension: class {} },
+  Main: {
+    LensExtension: class {},
+    Ipc: class {
+      static createInstance(extension: unknown) {
+        mocks.createIpc(extension);
+        return { handle: mocks.handle };
+      }
+
+      static resetInstance() {
+        mocks.resetIpc();
+      }
+    },
+  },
 }));
 
 vi.mock("electron", () => ({
   app: { getPath: mocks.getPath },
-  ipcMain: { handle: mocks.handle, removeHandler: mocks.removeHandler },
   shell: { openPath: mocks.openPath, openExternal: mocks.openExternal },
 }));
 
@@ -43,6 +57,7 @@ vi.mock("./provider-files", () => ({
   writeProviderFile: mocks.writeProviderFile,
 }));
 
+import { ipcChannels } from "../common/ipc-channels";
 import AgentBridgeMainExtension from "./index";
 
 type Handler = (...args: unknown[]) => unknown;
@@ -59,37 +74,37 @@ describe("AgentBridgeMainExtension", () => {
     vi.clearAllMocks();
   });
 
-  it("registers provider-neutral handlers and replaces them on reactivation", async () => {
+  it("registers every channel on the extension's own Ipc and forwards to the workspace bridge", async () => {
     const extension = new AgentBridgeMainExtension({} as never);
 
-    await extension.onActivate();
-    await extension.onActivate();
+    extension.onActivate();
 
-    const channels = [
-      "agentbridge-extension:check-provider",
-      "agentbridge-extension:prepare-workspace",
-      "agentbridge-extension:read-provider-file",
-      "agentbridge-extension:write-provider-file",
-      "agentbridge-extension:reveal-workspace",
-      "agentbridge-extension:open-in-editor",
-      "agentbridge-extension:reset-provider",
-      "agentbridge-extension:get-settings",
-      "agentbridge-extension:set-settings",
-      "agentbridge-extension:list-provider-artifacts",
-    ];
-    expect(mocks.removeHandler.mock.calls.map(([channel]) => channel)).toEqual([...channels, ...channels]);
-    expect(mocks.handle.mock.calls.map(([channel]) => channel)).toEqual([...channels, ...channels]);
+    expect(mocks.createIpc).toHaveBeenCalledWith(extension);
+    // Unprefixed: the host derives the prefix from the extension's id.
+    expect(mocks.handle.mock.calls.map(([channel]) => channel)).toEqual([
+      "check-provider",
+      "prepare-workspace",
+      "read-provider-file",
+      "write-provider-file",
+      "reveal-workspace",
+      "open-in-editor",
+      "reset-provider",
+      "get-settings",
+      "set-settings",
+      "list-provider-artifacts",
+    ]);
+    expect(Object.values(ipcChannels).sort()).toEqual(mocks.handle.mock.calls.map(([channel]) => channel).sort());
 
-    await getHandler("agentbridge-extension:check-provider")({}, "claude");
-    await getHandler("agentbridge-extension:prepare-workspace")({}, "cluster-1", "claude");
-    await getHandler("agentbridge-extension:read-provider-file")({}, "cluster-1", "claude", "CLAUDE.md");
-    await getHandler("agentbridge-extension:write-provider-file")({}, "cluster-1", "claude", "CLAUDE.md", "rules");
-    await getHandler("agentbridge-extension:reveal-workspace")({}, "cluster-1", "claude");
-    await getHandler("agentbridge-extension:open-in-editor")({}, "cluster-1", "claude");
-    await getHandler("agentbridge-extension:reset-provider")({}, "cluster-1", "claude");
-    await getHandler("agentbridge-extension:get-settings")({});
-    await getHandler("agentbridge-extension:set-settings")({}, { probeTimeoutMs: 30_000 });
-    await getHandler("agentbridge-extension:list-provider-artifacts")({}, "cluster-1", "claude");
+    await getHandler(ipcChannels.checkProvider)({}, "claude");
+    await getHandler(ipcChannels.prepareWorkspace)({}, "cluster-1", "claude");
+    await getHandler(ipcChannels.readProviderFile)({}, "cluster-1", "claude", "CLAUDE.md");
+    await getHandler(ipcChannels.writeProviderFile)({}, "cluster-1", "claude", "CLAUDE.md", "rules");
+    await getHandler(ipcChannels.revealWorkspace)({}, "cluster-1", "claude");
+    await getHandler(ipcChannels.openInEditor)({}, "cluster-1", "claude");
+    await getHandler(ipcChannels.resetProvider)({}, "cluster-1", "claude");
+    await getHandler(ipcChannels.getSettings)({});
+    await getHandler(ipcChannels.setSettings)({}, { probeTimeoutMs: 30_000 });
+    await getHandler(ipcChannels.listProviderArtifacts)({}, "cluster-1", "claude");
 
     expect(mocks.checkProvider).toHaveBeenCalledWith("claude", undefined, 15_000);
     expect(mocks.readExtensionSettings).toHaveBeenCalledWith("/user-data");
@@ -107,15 +122,28 @@ describe("AgentBridgeMainExtension", () => {
     expect(mocks.listProviderArtifacts).toHaveBeenCalledWith("/user-data", "cluster-1", "claude");
   });
 
+  // A reload under `pnpm dev`, or disabling and enabling the extension, runs
+  // onDeactivate before the next onActivate.
+  it("drops its Ipc on deactivation so the next activation can create it again", () => {
+    const extension = new AgentBridgeMainExtension({} as never);
+
+    extension.onActivate();
+    extension.onDeactivate();
+    extension.onActivate();
+
+    expect(mocks.resetIpc).toHaveBeenCalledTimes(1);
+    expect(mocks.createIpc).toHaveBeenCalledTimes(2);
+  });
+
   it("returns reset errors to renderer", async () => {
     mocks.resetProvider.mockImplementation(() => {
       throw new Error("Unsupported AI CLI provider: unknown");
     });
     const extension = new AgentBridgeMainExtension({} as never);
 
-    await extension.onActivate();
+    extension.onActivate();
 
-    expect(getHandler("agentbridge-extension:reset-provider")({}, "cluster-1", "unknown")).toEqual({
+    await expect(getHandler(ipcChannels.resetProvider)({}, "cluster-1", "unknown")).resolves.toEqual({
       ok: false,
       error: "Unsupported AI CLI provider: unknown",
     });
