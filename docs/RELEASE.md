@@ -11,16 +11,6 @@ The `main` branch carries the 2.x line, which requires Freelens >= 2.0.0
 (`engines.freelens: ^2.0.0`). Freelens 1.x users stay on the 1.x releases.
 Users pick a release whose major version matches their Freelens version.
 
-## Staged workflow changes
-
-GitHub Actions cannot push changes to `.github/workflows/`, so the workflows
-updated for the v2 port are staged in `github-workflow-fix/`: `check.yaml`,
-`release.yaml`, `tag.yaml`, `type-check.yaml`, `integration-tests.yaml`
-(against Freelens `main`), `mise-lock-check.yaml`, and `biome-migrate.yaml`.
-A maintainer moves them into `.github/workflows/` and deletes the directory.
-Until then, the workflows below behave as in the 1.x line; the differences are
-noted where they matter.
-
 ## Required setup
 
 Configure repository before first release:
@@ -51,8 +41,8 @@ bump and refreshed lockfile, then opens a pull request.
 | `prerelease`       | `0.1.0` -> `0.1.1-0` |
 
 For a stable release, select an input that produces an exact `X.Y.Z` version.
-With the staged `tag.yaml`, a prerelease version such as `2.0.0-0` is tagged
-and released as well (see Step 4).
+`tag.yaml` tags and releases a prerelease version such as `2.0.1-0` as well
+(see Step 4).
 
 ## Step 2: Review and merge stable version PR
 
@@ -83,9 +73,8 @@ Pushing `vX.Y.Z` triggers `Release`, which:
 
 After stable release completes, manually run `Automated npm version` with
 `prerelease`, review and merge resulting PR. Example: `0.1.1` -> `0.1.2-0`.
-With the current `tag.yaml`, pre-release versions do not create tags
-automatically. The staged `tag.yaml` also tags `X.Y.Z-N` versions, so a merged
-pre-release PR is published under `next` and released as a GitHub prerelease.
+`tag.yaml` also tags `X.Y.Z-N` versions, so a merged pre-release PR is
+published under `next` and released as a GitHub prerelease.
 Start later stable release with another manual version bump PR.
 
 ## Workflow chain

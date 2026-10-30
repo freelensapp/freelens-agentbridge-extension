@@ -3,6 +3,7 @@
   "description": [
     "rangeStrategy: always bump dependencies, even when the new version is already in the range.",
     "rebaseWhen: rebase only on conflicts, to save unnecessary workflow runs.",
+    "postUpdateOptions: pnpmDedupe dedupes pnpm-lock.yaml in Renovate's own commit, so an update lands without duplicates. Freelens does not set it, because there the dedupe runs out of memory on its much larger tree, and dedupes Renovate branches with a workflow instead (npm-dedupe-renovate.yaml); this repository needs no such workflow.",
     "internalChecksFilter: hold updates that do not yet satisfy minimumReleaseAge instead of raising a pending PR, which would run CI and fail pnpm's minimumReleaseAge policy.",
     "ignoreDeps: ubuntu must be the oldest possible version, for binary compatibility with older operating systems.",
     "gitIgnoredAuthors: biome-migrate.yaml commits the migrated biome.jsonc to a Renovate branch as github-actions[bot]; without this, Renovate takes that commit for a manual edit, marks the pull request as edited and stops updating it.",
@@ -71,7 +72,7 @@
       "groupName": "Freelens dependencies"
     },
     {
-      "description": "Tools run with pnpm dlx, and the Biome and Prettier that Trunk runs, take the version Freelens runs with pnpm dlx in the scripts of its root package.json on main, except the ones excluded with ! here, which Freelens does not run. The custom datasource has no release dates, so minimumReleaseAge is off.",
+      "description": "Tools run with pnpm dlx, and the Biome that Trunk runs, take the version Freelens runs with pnpm dlx in the scripts of its root package.json on main, except the ones excluded with ! here, which Freelens does not run. The custom datasource has no release dates, so minimumReleaseAge is off.",
       "matchManagers": ["custom.regex"],
       "matchFileNames": ["package.json", ".trunk/trunk.yaml"],
       "matchDatasources": ["npm"],
@@ -109,7 +110,7 @@
       "enabled": false
     },
     {
-      "description": "Group @freelensapp/* with everything that follows Freelens into one PR, so that a nightly of @freelensapp/extensions and the stack it was built with arrive together.",
+      "description": "Group @freelensapp/* with everything that follows Freelens into one PR, so that a release of @freelensapp/extensions and the stack it was built with arrive together.",
       "matchPackageNames": ["@freelensapp/**"],
       "groupName": "Freelens dependencies"
     },

@@ -37,7 +37,8 @@ run `pnpm type:check` for that.
 
 ```sh
 pnpm test:unit    # vitest
-pnpm type:check   # tsc, one program per runtime plus tests, tooling and environment tests
+pnpm test:integration  # vitest, against a running Freelens dev (see below)
+pnpm type:check   # tsc, one program per runtime plus tests, integration tests, tooling and environment tests
 pnpm lint:check   # biome
 pnpm knip:check   # unused files and dependencies, development and production
 pnpm trunk:check  # the formats Biome does not cover (Markdown, YAML, workflows)
@@ -47,10 +48,13 @@ Component tests that need a DOM opt into jsdom per file with
 `// @vitest-environment jsdom` and use React Testing Library. The cluster page
 itself is a thin shell over Freelens public APIs and is smoke-tested manually.
 
-The integration test in `integration/__tests__/` runs in a Freelens build, not
-here: the `Integration tests` workflow packs the extension, copies the test
-into a Freelens `main` checkout, installs the tarball, and checks that the
-extension is enabled and that its preferences load from the main process.
+The integration test in `integration/__tests__/` runs here, under its own
+Vitest (`pnpm test:integration`), against Freelens dev started with `pnpm dev`
+from a freelensapp/freelens checkout, which it attaches to over CDP on port
+9223. It installs this checkout in place and checks that the extension is
+enabled with no error and that its preferences load from the main process.
+The `Integration tests` workflow runs it the same way against the Freelens
+`v2.0.0` tag.
 
 ## Pack and install
 
@@ -58,8 +62,8 @@ extension is enabled and that its preferences load from the main process.
 
 Build once, then open Freelens -> Extensions (`Ctrl+Shift+E`), enter the path
 of your checkout (the directory with `package.json`) and press Install.
-Freelens runs the extension from `dist/` in that directory and lists it as
-unverified. Then run:
+Freelens runs the extension from `dist/` in that directory and lists it with
+"development" in the version column. Then run:
 
 ```sh
 pnpm dev

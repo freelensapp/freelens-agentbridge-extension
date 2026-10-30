@@ -53,8 +53,8 @@
   - ESM renderer and main builds, the host-module plugin, standard-decorator lowering, and CSS module declarations, all from the extension template.
 - `tsconfig.base.json`, `src/*/tsconfig.json`, `src/tsconfig.json`, `tsconfig.json`, `environment-tests/`
   - One TypeScript program per runtime, plus tests and tooling, and probes proving each runtime's environment stays pure.
-- `.github/workflows/`, `github-workflow-fix/`, `docs/`
-  - Version/tag/release automation, workflows updated for v2 staged for a maintainer to move into `.github/workflows/` (CI cannot push workflow changes), and contributor, release, and feature documentation.
+- `.github/workflows/`, `docs/`
+  - Version/tag/release automation and CI, and contributor, release, and feature documentation.
 
 ## Data Flow
 
