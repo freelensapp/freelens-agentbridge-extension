@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agentBridgeProviders } from "../common/agentbridge-providers";
-import {
-  applicableCapabilityHints,
-  CAPABILITY_KIND_ORDER,
-  capabilityHints,
-  defaultIconForKind,
-  groupApplicableCapabilityHints,
-  iconForHint,
-} from "./capability-hints";
+import { applicableCapabilityHints, capabilityHints, defaultIconForKind, iconForHint } from "./capability-hints";
 
 import type { CapabilityHint } from "./capability-hints";
 
@@ -65,11 +58,27 @@ describe("cluster-map capability hint", () => {
     expect(description).toContain("idempotent");
   });
 
-  it("is a command with the map icon and an editable footnote", () => {
+  it("is a command with the map icon, shown with the seeded command files", () => {
     const hint = clusterMapHint();
     expect(hint.kind).toBe("command");
     expect(iconForHint(hint)).toBe("map");
-    expect(hint.footnote).toContain("editable");
+    expect(hint.editorRole).toBe("command");
+  });
+
+  it("finds the cluster-level skill as proof the map was built, and nothing else", () => {
+    const hint = clusterMapHint();
+    const skill = (name: string, kind: "skill" | "agent" = "skill") => ({
+      kind,
+      name,
+      path: `.claude/skills/${name}/SKILL.md`,
+      mtimeMs: 1,
+      origin: "generated" as const,
+    });
+
+    expect(hint.findEvidence?.([skill("ns-map-default"), skill("cluster-map-kind")])?.name).toBe("cluster-map-kind");
+    // The seeded Copilot/Codex skill that BUILDS the map is not the map.
+    expect(hint.findEvidence?.([skill("build-cluster-map"), skill("ns-map-default")])).toBeUndefined();
+    expect(hint.findEvidence?.([skill("cluster-map-kind", "agent")])).toBeUndefined();
   });
 });
 
@@ -99,25 +108,5 @@ describe("applicableCapabilityHints", () => {
       getInvocation: () => null,
     };
     expect([hidden].filter((hint) => hint.getInvocation("claude") !== null)).toHaveLength(0);
-  });
-});
-
-describe("groupApplicableCapabilityHints", () => {
-  it("groups applicable hints by kind and skips empty groups", () => {
-    const groups = groupApplicableCapabilityHints("claude");
-    expect(groups.length).toBeGreaterThan(0);
-    for (const group of groups) {
-      expect(group.hints.length).toBeGreaterThan(0);
-      for (const hint of group.hints) {
-        expect(hint.kind).toBe(group.kind);
-      }
-    }
-  });
-
-  it("orders groups by CAPABILITY_KIND_ORDER", () => {
-    const groups = groupApplicableCapabilityHints("claude");
-    const orderIndex = groups.map((group) => CAPABILITY_KIND_ORDER.indexOf(group.kind));
-    const sorted = [...orderIndex].sort((a, b) => a - b);
-    expect(orderIndex).toEqual(sorted);
   });
 });

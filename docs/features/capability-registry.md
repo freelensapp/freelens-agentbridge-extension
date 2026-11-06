@@ -2,9 +2,9 @@
 
 The capability registry is the data-driven list of capabilities the extension
 advertises to the user — bundled commands, preloaded skills, custom agents, and
-so on. Each capability is a plain data object; a single generic card renders
-every entry uniformly, so adding a capability means appending one object, not
-writing a new component.
+so on. Each capability is a plain data object; the page's workspace explorer
+renders every entry as one generic item, so adding a capability means
+appending one object, not writing a new component.
 
 The extension never runs these capabilities itself. Each hint explains what the
 capability produces and shows exactly how to invoke it inside a session for the
@@ -14,13 +14,14 @@ selected provider.
 
 - **`src/renderer/capability-hints.ts`** — data and types only. Exports the
   `capabilityHints` array plus helpers (`applicableCapabilityHints`,
-  `groupApplicableCapabilityHints`, `iconForHint`).
-- **`src/renderer/capabilities-section.tsx`** — the view. `CapabilityHintCard`
-  renders one hint (icon + title + kind badge + description + invocation +
-  optional footnote), and `CapabilitiesSection` renders every applicable hint
-  grouped by kind in a collapsible, intrinsically responsive grid.
-- **`src/renderer/agentbridge-page.tsx`** — mounts `<CapabilitiesSection>` in the
-  right-hand rail when a provider is ready.
+  `iconForHint`, `defaultIconForKind`).
+- **`src/renderer/page-model.ts`** — `capabilityProgress(hint, inventory)`
+  says whether a capability has already run in this workspace, from the
+  artifact its `findEvidence` names.
+- **`src/renderer/workspace-explorer.tsx`** — lists each applicable hint under
+  **Capabilities**, with its progress ("Built 4m ago", "Not built yet").
+  Selected, the pane shows the description, the invocation with a copy button,
+  and the seeded files of the hint's `editorRole` in the editor.
 
 ### Applicability
 
@@ -29,13 +30,14 @@ non-null `CapabilityInvocation` means "this capability applies to that provider
 and here is how to invoke it"; returning `null` hides the hint for that provider.
 There is no separate `appliesTo` flag to keep in sync.
 
-### Grouping and layout
+### Progress
 
-Hints are grouped by `kind` (`command` / `skill` / `agent`) in
-`CAPABILITY_KIND_ORDER`. Empty groups are skipped. Cards flow in a CSS grid
-(`repeat(auto-fill, minmax(280px, 1fr))`) that reflows from one column in a
-narrow rail to several columns when wide — no media queries, because the renderer
-uses inline styles only.
+A hint may declare `findEvidence(artifacts)`, which picks the artifact whose
+presence proves the capability has run. The item then reads **Built 4m ago**
+in green, or **Not built yet** in amber. Without
+`findEvidence`, or before the first successful inventory scan, the item stays
+neutral and claims neither. The cluster map uses the cluster-level skill:
+every provider's scaffold names it `cluster-map-<cluster>`.
 
 ## Adding a capability
 
@@ -57,7 +59,10 @@ const namespaceDocHint: CapabilityHint = {
     }
     return { verb: "Run", command: "/namespace-doc" };
   },
-  // footnote is optional — only for capabilities also seeded as an editable file
+  // Optional: the declared editors holding the capability's seeded file.
+  // editorRole: "command",
+  // Optional: the artifact that proves the capability has run.
+  findEvidence: (artifacts) => artifacts.find((artifact) => artifact.name.startsWith("namespace-doc-")),
 };
 
 export const capabilityHints: readonly CapabilityHint[] = [clusterMapHint, namespaceDocHint];
@@ -66,9 +71,9 @@ export const capabilityHints: readonly CapabilityHint[] = [clusterMapHint, names
 Guidelines:
 
 - Pick the `kind` that matches how the provider exposes the capability; it drives
-  the group, badge, and default icon.
+  the default icon.
 - Return `null` from `getInvocation` for any provider that does not support the
-  capability — that is how the card self-hides.
+  capability — that is how the item hides itself.
 - Vary the invocation per provider when they differ, and treat the fall-through
   as a claim you have to defend: Claude Code, OpenCode and Pi have project-local
   slash commands. Copilot CLI invokes skills by natural language, and Codex CLI
@@ -78,11 +83,11 @@ Guidelines:
   `.pi/prompts/<name>.md` file is a real `/<name>` command, with `description`
   and `argument-hint` frontmatter and `$1` / `$@` / `${1:-default}` argument
   substitution, so it needs no branch of its own.
-- No view changes are needed — the generic card handles rendering.
+- No view changes are needed — the generic item handles rendering.
 
 ## Tests
 
-Registry logic and card behaviour are covered in
-`src/renderer/capability-hints.test.ts`. When adding a capability, assert its
-`getInvocation` for the relevant providers and that it appears in the correct
-group.
+Registry logic is covered in `src/renderer/capability-hints.test.ts`, and
+progress in `src/renderer/page-model.test.ts`. When adding a capability,
+assert its `getInvocation` for the relevant providers and what `findEvidence`
+accepts and rejects.

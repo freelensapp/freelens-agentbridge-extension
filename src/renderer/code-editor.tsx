@@ -6,6 +6,8 @@ import { useEffect, useRef } from "react";
 interface CodeEditorProps {
   language: string;
   initialValue: string;
+  // What a screen reader announces for the editor, e.g. the file path.
+  ariaLabel?: string;
   onChange(value: string): void;
 }
 
@@ -17,7 +19,12 @@ interface CodeEditorProps {
 // is typed `"yaml" | "json"`, and the declared files are also Markdown, TOML
 // (shown as ini) and plain text. The value is the initial one: the editor owns
 // the text from then on, and the parent remounts it for another file.
-export const CodeEditor = observer(function CodeEditor({ language, initialValue, onChange }: CodeEditorProps) {
+export const CodeEditor = observer(function CodeEditor({
+  language,
+  initialValue,
+  ariaLabel,
+  onChange,
+}: CodeEditorProps) {
   const container = useRef<HTMLDivElement>(null);
   const changeListener = useRef(onChange);
   const theme = Renderer.Theme.activeTheme.get().monacoTheme;
@@ -36,6 +43,13 @@ export const CodeEditor = observer(function CodeEditor({ language, initialValue,
       scrollBeyondLastLine: false,
       automaticLayout: true,
       scrollbar: { alwaysConsumeMouseWheel: false },
+      ariaLabel,
+      fontSize: 13,
+      lineHeight: 20,
+      padding: { top: 10, bottom: 10 },
+      renderLineHighlight: "line",
+      overviewRulerLanes: 0,
+      hideCursorInOverviewRuler: true,
     });
     const subscription = instance.onDidChangeModelContent(() => changeListener.current(instance.getValue()));
 

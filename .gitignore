@@ -49,3 +49,7 @@ docs/superpowers/
 *.pfx
 *.pem
 *.key
+
+# Impeccable design-run scratch (decision sketches, review captures)
+.impeccable
+.agents/skills/impeccable

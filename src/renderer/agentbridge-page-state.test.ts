@@ -354,13 +354,11 @@ describe("inventory scan", () => {
   it("drops the previous provider's inventory and in-flight scan on a new selection", async () => {
     const { ipc, state } = await setupReady();
 
-    state.setArtifactsExpanded(true);
     state.refreshInventory({ force: true });
     state.selectProvider("opencode");
     expect(state.getSnapshot()).toMatchObject({
       inventory: undefined,
       inventoryLoading: false,
-      artifactsExpanded: false,
     });
 
     await ipc.resolve("list-provider-artifacts", { status: "ok", groups: [{ kind: "skill", count: 9 }] });

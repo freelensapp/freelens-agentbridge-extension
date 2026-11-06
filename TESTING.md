@@ -10,7 +10,8 @@ The TypeScript check runs one program per runtime, and `environment-tests/` prov
 One integration test (`integration/__tests__/extensions.tests.ts`) runs inside a Freelens `main` build in CI: it installs the packed tarball, checks the extension is Enabled (not Incompatible), opens its preferences, and waits for "Version probe timeout (ms)", which is read from the main process over IPC.
 Page logic is tested through `createAgentBridgePageState` (`src/renderer/agentbridge-page-state.test.ts`) with a fake `invoke` that holds every call until the test answers it, so races are staged explicitly; the React page itself only renders.
 IPC contract coverage is type-level: `src/common/ipc-channels.test.ts` uses `expectTypeOf`, so it fails under `pnpm type:check`, not `pnpm test:unit`.
-Everything else that depends on the Freelens host, such as terminal launch and the editors, requires a manual smoke check.
+The page's parts have jsdom component tests with React Testing Library: the bridge strip and provider switcher (`bridge-header.test.tsx`), the workspace explorer (`workspace-explorer.test.tsx`), and the file editor's autosave and flush on file change (`provider-file-editor.test.tsx`, with Monaco replaced by a textarea). The page's React-free logic is in `page-model.test.ts`.
+Everything else that depends on the Freelens host, such as terminal launch, Monaco itself, and the page composed in Freelens, requires a manual smoke check in both the dark and the light theme.
 
 ## Conventions
 
@@ -21,7 +22,11 @@ Everything else that depends on the Freelens host, such as terminal launch and t
 - Use injected fakes for process, shell, and host boundaries; do not invoke real provider CLIs.
 - Use `test/freelens-extensions.ts` through the `@freelensapp/extensions` alias in `vitest.config.ts`. The stub covers only what the tests use, at runtime only: a test that reaches a missing member compiles against the real declaration and fails on `undefined`, so add the member to the stub.
 - `react`, `mobx`, `mobx-react`, and `monaco-editor` are not stubbed; they resolve to the devDependencies pinned to the host's versions.
-- Manually smoke-test host-rendered behavior in Freelens 2, using a directory install and `pnpm dev`.
+- Smoke-test host-rendered behavior in Freelens 2, using a directory install and `pnpm dev`. To drive and screenshot it from an agent, use the `freelens` skill when your harness provides it (it lives outside this repository). For this extension:
+  - Build with `pnpm build` (Node 24) first.
+  - The cluster page's menu id is `agentbridge`: `node <skill>/scripts/example.mjs <cluster> --extension . --menu agentbridge` installs this checkout and screenshots the page in both themes.
+  - "Open session" starts the provider CLI in a terminal tab against that cluster; close the tabs you open with `closeDockTabs(frame, "<Provider> · ")`.
+  - Workspaces live in the profile, under `<profile>/Freelens/agentbridge-sessions/`.
 
 ## Commands
 

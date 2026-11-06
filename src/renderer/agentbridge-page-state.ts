@@ -29,7 +29,6 @@ export interface AgentBridgePageSnapshot {
   // Undefined until the first scan of the current selection lands.
   readonly inventory?: HarnessInventoryResult;
   readonly inventoryLoading: boolean;
-  readonly artifactsExpanded: boolean;
   // Relative ages are pinned to the moment a scan landed, so rows do not drift
   // on unrelated re-renders.
   readonly scanNowMs: number;
@@ -53,7 +52,6 @@ export interface AgentBridgePageState {
   // A no-op unless the provider is ready. Without `force`, a scan already in
   // flight or one that succeeded within REFRESH_COALESCE_MS is reused.
   refreshInventory(options?: { force?: boolean }): void;
-  setArtifactsExpanded(expanded: boolean): void;
   revealWorkspace(): Promise<ActionResult>;
   openInEditor(): Promise<ActionResult>;
   // Resets the provider's managed paths, then checks it and rescans. Ask the
@@ -75,7 +73,6 @@ export function createAgentBridgePageState({
   let snapshot: AgentBridgePageSnapshot = {
     provider: { status: "idle" },
     inventoryLoading: false,
-    artifactsExpanded: false,
     scanNowMs: now(),
   };
   let active = false;
@@ -111,7 +108,7 @@ export function createAgentBridgePageState({
     invalidateInventory();
     // A fresh selection has no inventory yet: drop the previous provider's
     // numbers rather than showing them against the new one.
-    update({ clusterId, providerId, inventory: undefined, inventoryLoading: false, artifactsExpanded: false });
+    update({ clusterId, providerId, inventory: undefined, inventoryLoading: false });
     checkProvider();
   }
 
@@ -230,10 +227,6 @@ export function createAgentBridgePageState({
     retry: checkProvider,
 
     refreshInventory,
-
-    setArtifactsExpanded(artifactsExpanded) {
-      update({ artifactsExpanded });
-    },
 
     revealWorkspace: () =>
       runAction((clusterId, providerId) => invoke(ipcChannels.revealWorkspace, clusterId, providerId)),

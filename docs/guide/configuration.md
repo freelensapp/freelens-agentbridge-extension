@@ -6,11 +6,14 @@ Everything below lives in that workspace, so you can give production a strict,
 ask-for-everything policy while a local kind cluster runs with broad
 permissions.
 
-Edit any seeded file directly in Freelens: each one opens in Freelens' own
-Monaco editor, with debounced autosave, syntax highlighting for JSON, TOML,
+The AgentBridge page is a workspace explorer. On the left it lists the
+instructions file, the guardrails, the capabilities, and the skills and agents
+the workspace holds; the item you select fills the right side. A file opens in
+Freelens' own Monaco editor, with autosave, syntax highlighting for JSON, TOML,
 and Markdown, and the colors of the active Freelens theme. Or work on the
-workspace externally with **Reveal workspace** (your file manager) or
-**Open in editor** (VS Code or a fork).
+workspace externally with **Reveal** (your file manager) or **Open in editor**
+(VS Code or a fork), next to **Open session**. The copy button beside the
+workspace path at the top of the page copies its full path.
 
 ## Instructions file: teach the agent about the cluster
 
@@ -49,16 +52,19 @@ without asking. Each provider has its own format:
 - [Claude Code](providers/claude.md) — `allow` / `ask` / `deny` tool patterns
 - [GitHub Copilot CLI](providers/copilot.md) — interactive approvals
 - [OpenAI Codex CLI](providers/codex.md) — sandbox and approval policy in TOML
-- [Pi](providers/pi.md) — a TypeScript `tool_call` guard
+- [Pi](providers/pi.md) — a TypeScript `tool_call` guard; Pi's
+  `.pi/settings.json` (tools and session options) is listed separately as
+  **Settings**
 
 Guardrails are a convenience, not a security boundary: Kubernetes RBAC and
 your kubeconfig decide what the agent can actually do to the cluster.
 
-## Workspace artifacts
+## Workspace contents
 
-The AgentBridge page shows how many skills and custom agents a workspace
-holds, and when each last changed. Skills created by the
-`build-cluster-map` command show up here.
+The **Skills** and **Agents** groups of the explorer list what the workspace
+holds, newest first, and when each last changed. Skills created by the
+`build-cluster-map` command show up here, and **Build a cluster map** reads
+"Built" once the cluster-level skill exists.
 
 ## Extension preferences
 

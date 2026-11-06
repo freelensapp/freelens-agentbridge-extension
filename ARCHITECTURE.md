@@ -33,18 +33,28 @@
   - Error boundary and error page from the extension template; a render error replaces the cluster page, not the cluster's whole main area.
 - `src/renderer/agentbridge-page-state.ts`
   - React-free page state: the active cluster's selected provider, its readiness check, the workspace inventory scan (coalescing, in-flight gate, stale-result tokens), and the reveal/open/reset actions. Takes `invoke`, storage and a clock; the page subscribes with `useSyncExternalStore`.
-- `src/renderer/agentbridge-page.tsx`
-  - Renders the page state, forwards user intent to it, asks for Reset confirmation, shows notifications, and launches sessions.
+- `src/renderer/agentbridge-page.tsx`, `agentbridge-page.module.scss`
+  - The cluster page: the bridge strip, the session bar (the selected provider's state, workspace actions and Open session), then the workspace explorer. Renders the page state, forwards user intent to it, asks for Reset confirmation, shows notifications, and launches sessions. The stylesheet is the page's only one and uses host theme variables only; `DESIGN.md` describes its system.
+- `src/renderer/bridge-header.tsx`, `provider-marks.tsx`
+  - The bridge strip: cluster, provider switcher (a radio group showing each provider's mark and name) and workspace path. `ProviderMark` draws the five providers' monochrome marks in `currentColor`; each mark's source is recorded beside it.
+- `src/renderer/workspace-explorer.tsx`
+  - The workspace explorer: a list of the declared files (instructions, guardrails), the capabilities and the workspace's skills and agents, beside a pane that shows the selected item: a file in a full-height editor, a capability with its invocation and seeded file, or an artifact's metadata.
+- `src/renderer/copy-button.tsx`, `glyph.tsx`
+  - A copy-to-clipboard icon button, and `Glyph`, a host icon hidden from screen readers.
+- `src/renderer/page-model.ts`
+  - React-free view logic for the page: which declared files the explorer lists under which heading (`groupEditors`), the default selection, the shortened workspace path, and whether a capability has run (`capabilityProgress`).
 - `src/renderer/provider-selection.ts`
   - Per-cluster provider selection in `localStorage`.
 - `src/renderer/provider-file-editor.tsx`, `code-editor.tsx`, `editor-language.ts`
-  - Declared-file editor with debounced IPC saves; `CodeEditor`, a Monaco editor on the host's Monaco instance (`import { editor } from "monaco-editor"`, mapped to the host global) with the host theme; and the map from a declared file's syntax to a language id the host's Monaco can show.
+  - Declared-file editor with debounced IPC saves, and a pending save written at once when another file opens; `CodeEditor`, a Monaco editor on the host's Monaco instance (`import { editor } from "monaco-editor"`, mapped to the host global) with the host theme; and the map from a declared file's syntax to a language id the host's Monaco can show.
 - `src/renderer/launch-session.ts`, `renderer-launch.ts`, `get-launch-command.ts`
   - Testable terminal launch logic, Freelens terminal adapter, and shell-specific commands (`LaunchShell = "posix" | "windows"`, chosen with `Common.App.isWindows`).
-- `src/renderer/capability-hints.ts`, `capabilities-section.tsx`
-  - Data-driven capability registry and generic capability UI.
-- `src/renderer/harness-inventory.ts`, `harness-artifacts-section.tsx`
-  - Inventory view formatting (chips, ages, totals) and the workspace artifacts panel.
+- `src/renderer/capability-hints.ts`
+  - Data-driven capability registry; the explorer renders each applicable hint as one item.
+- `src/renderer/harness-inventory.ts`
+  - Inventory view formatting (ages, kind labels, totals).
+- `src/renderer/settings-page.tsx`
+  - Both preferences (probe timeout, editor command) in one Extensions preferences block.
 - `src/**/*.test.{ts,tsx}`, `test/freelens-extensions.ts`
   - Vitest unit tests and Freelens host stub (`Main`/`Renderer` `LensExtension` and `Ipc`, `Common.App`, `Common.logger`, and the renderer members the tests use).
 - `integration/__tests__/`
@@ -60,7 +70,7 @@
 
 - Freelens supplies active cluster ID and host UI APIs to renderer.
 - Renderer restores selected provider per cluster from `localStorage`.
-- Renderer invokes main IPC to run provider `<executable> --version`; main returns `ready`, `missing`, or `error`.
+- Renderer invokes main IPC to run the selected provider's `<executable> --version`; main returns `ready`, `missing`, or `error`. Only the selected provider is probed.
 - When ready, renderer requests workspace preparation.
 - Main derives `<userData>/agentbridge-sessions/<safe-cluster-id>/<provider-id>/`, verifies real-path containment, and writes missing declared files from the scaffolds embedded in the main bundle.
 - Renderer reads and debounced-writes declared provider files through IPC; main rejects undeclared, absolute, traversal, and escaped paths.
@@ -85,8 +95,8 @@
 - `AgentBridgePageState`: the page's state module; its interface (`setCluster`, `selectProvider`, `retry`, `refreshInventory`, `reset`, ...) is also its test surface, driven with a fake `invoke` in Node.
 - `ExtensionSettings`: normalized probe timeout and external editor command/URI scheme.
 - `LaunchSessionDeps`: small adapter boundary between framework-independent launch timing and Freelens terminal APIs.
-- `CapabilityHint`: data-only capability description whose provider-specific invocation controls applicability.
-- `ArtifactSource`: registry entry declaring, per artifact kind, the workspace-relative roots scanned for the inventory and their directory layout. A kind may be omitted when the CLI has no such concept — Pi declares skills only, since it has no sub-agents — and the renderer needs no branch for it, because `summarizeInventory` already keeps only groups with `count > 0`.
+- `CapabilityHint`: data-only capability description whose provider-specific invocation controls applicability; it may name the editor role holding its seeded file and the artifact that proves it has run.
+- `ArtifactSource`: registry entry declaring, per artifact kind, the workspace-relative roots scanned for the inventory and their directory layout. A kind may be omitted when the CLI has no such concept — Pi declares skills only, since it has no sub-agents — and the renderer needs no branch for it, because the explorer renders nothing for a group with `count === 0`.
 - `HarnessArtifact` / `HarnessArtifactGroup`: normalized inventory record and its derived per-kind rollup (count, mtime range, truncation).
 - `IpcContract` / `ipcChannels` (`src/common/ipc-channels.ts`): explicit renderer/main IPC boundary for all privileged operations. `IpcContract` maps each channel to its arguments and result; `IpcInvoke` (renderer) and `IpcHandlers` (main) are derived from it, so neither side casts. Arguments are still untrusted at runtime and validated by main. Names are unprefixed; the host prefixes them per extension and removes the handlers on deactivation.
 

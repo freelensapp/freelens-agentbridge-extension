@@ -16,7 +16,7 @@ be run, the inventory describes what **exists** on disk — including everything
   deliberately out of scope; nothing in the scanner knows about them.
 - **Workspace only.** Sessions launch with an inherited `HOME`, so the agent also
   loads the user's personal `~/.claude`. That is deliberately not counted, and
-  the expanded panel says so in one line rather than implying completeness.
+  the explorer says so in one line rather than implying completeness.
 - **Read-only.** Nothing in this feature creates, edits, renames or deletes an
   artifact, and no file body ever crosses the IPC boundary.
 
@@ -29,8 +29,8 @@ be run, the inventory describes what **exists** on disk — including everything
   `MAX_ARTIFACTS_PER_KIND` (200), the work budget `MAX_ENTRIES_SCANNED` (2000),
   and `buildArtifactGroup`, which derives a per-kind rollup (count, oldest/newest
   mtime, examined count, oldest-first ordering) from a flat artifact list plus the
-  scan's own totals. One scan feeds both the header chips and the drill-down; the
-  rollup is never scanned separately.
+  scan's own totals. One scan feeds both the explorer's lists and the cluster
+  map's progress; the rollup is never scanned separately.
 - **`src/common/agentbridge-providers.ts`** — each provider declares
   `artifactSources`: per kind, a list of workspace-relative roots (highest
   precedence first) and a layout (`skill-dir` for `<root>/<name>/SKILL.md`,
@@ -57,13 +57,11 @@ be run, the inventory describes what **exists** on disk — including everything
   the stale-response token, 2-second coalescing, the in-flight and force gates,
   and when a result opens the coalescing window.
 - **`src/renderer/harness-inventory.ts`** — React-free view logic:
-  `formatRelativeAge`, `chipLabel`, `totalLabel`, `summarizeInventory`,
-  and `iconForArtifactKind` / `labelForArtifactKind`, which reuse the capability
-  registry's icons and labels so both panels share one vocabulary.
-- **`src/renderer/harness-artifacts-section.tsx`** — the view:
-  `HarnessInventoryChips` (header rollup), `HarnessArtifactRow` (one artifact) and
-  `HarnessArtifactsSection` (the collapsible drill-down). Every export is
-  hook-free; expansion state lives in `agentbridge-page-state.ts`.
+  `formatRelativeAge`, `totalLabel`, and `labelForArtifactKind`, which reuses
+  the capability registry's labels so the page has one vocabulary.
+- **`src/renderer/workspace-explorer.tsx`** — the view: the Skills and Agents
+  groups of the workspace explorer, and an artifact's details in its pane.
+  The scan and its state live in `agentbridge-page-state.ts`.
 
 ### Registry declarations
 
@@ -85,9 +83,8 @@ your own with extensions" — and the third-party packages that add them define 
 standard directory, so there is nothing authoritative to scan. Declaring a root
 anyway would report an authoritative `0 agents` forever, which is the Codex TOML
 mistake in reverse. Nothing in the scanner or the UI needs a branch for it:
-`summarizeInventory` keeps only kinds with `count > 0`, and
-`harness-artifacts-section.tsx` renders nothing for an empty group, so Pi simply
-shows a skills chip and no agents chip.
+`workspace-explorer.tsx` renders nothing for an empty group, so Pi simply shows
+a Skills group and no Agents group.
 
 Codex is the only provider whose agents root uses `toml-file`: a Codex subagent
 is a standalone TOML file (`name`, `description`, `developer_instructions`), not
@@ -265,28 +262,22 @@ the 4096-byte window; only the head parsing differs, selected by
 
 ## UI
 
-- **Header chips** (`HarnessInventoryChips`) render `· 21 skills · 2 agents ·
-  updated 4m ago` next to the provider version. Zero-count kinds are omitted, and
-  an entirely empty inventory renders nothing at all — an authoritative-looking
-  "0 skills" is worse than nothing. The trailing age is the **newest** mtime
-  across kinds ("when did anything last change"). Clicking a chip opens the
-  drill-down.
-- **Drill-down** (`HarnessArtifactsSection`) renders nothing until the first
-  result lands, then a collapsible section headed "Workspace artifacts" with the
-  total across kinds (`totalLabel`, which appends `+` when any kind is truncated
-  so the header agrees with the `200+` chip) and a Refresh button. Expanded, it
-  shows the "your personal `~/.claude` is not counted" note, then either the
-  empty state ("No skills or custom agents yet. Run /build-cluster-map inside a
-  session to generate some.") or one group per non-empty kind in registry order.
-  Each row shows the kind icon, name, the `seeded`/`generated` badge, a relative
-  age (with the absolute timestamp as its `title`), the description and the
-  workspace-relative path.
-- **A failed scan carries no count.** The section is collapsed by default and is
-  re-collapsed on every cluster/provider change, so the collapsed rendering is
-  the default rendering of a failure. The header count is therefore rendered only
-  for an `ok` result — otherwise a failure would read as an authoritative
-  "Workspace artifacts 0" — and the error message with its Retry control sits
-  outside the collapsible body so it is visible without expanding.
+- **Workspace explorer** (`WorkspaceExplorer`) lists the skills and agents
+  under their own groups, below the configuration files and capabilities. Its
+  footer says "Scanning the workspace…" until the first result lands, then that
+  the list counts the workspace only, with a Rescan button. An empty inventory
+  shows one line ("None yet. Building the cluster map adds one skill per
+  namespace."); otherwise each non-empty kind is a group in registry order,
+  newest first: name and relative age. Selecting one shows its description,
+  origin, absolute time and path, with a copy button; AgentBridge never opens
+  an artifact's body.
+- **A failed scan carries no count.** A group's count appears only for an `ok`
+  result; a failure shows its message with Try again, and an authoritative "0"
+  never appears. A truncated kind shows `200+` and says the workspace holds
+  more.
+- **The cluster map reads the same scan.** Once a skill named
+  `cluster-map-<cluster>` exists, its item reads "Built" with its age (see
+  [capability registry](capability-registry.md#progress)).
 - Relative ages are formatted against a `nowMs` passed in from the page, captured
   when a scan lands, so rendered output is stable between scans.
 
@@ -295,13 +286,13 @@ the 4096-byte window; only the head parsing differs, selected by
 The agent mutates these files inside a terminal tab the extension does not
 observe, so the page state (`agentbridge-page-state.ts`) rescans on mount, cluster switch, provider
 switch, the transition into `ready`, after a successful Reset, on `window` focus
-and on `document` `visibilitychange` → visible, plus the explicit Refresh and
-Retry buttons. There is no `fs.watch` and no polling.
+and on `document` `visibilitychange` → visible, plus the explicit Rescan and
+Try again buttons. There is no `fs.watch` and no polling.
 
 Every one of those paths goes through the same `refreshInventory` function:
 
 - Scans are coalesced within 2 seconds (`REFRESH_COALESCE_MS`) of the last
-  successful scan. Only the Refresh and Retry buttons pass `force` and bypass it.
+  successful scan. Only the Rescan and Try again buttons pass `force` and bypass it.
 - `lastScanAt` is written only when the result is `ok`: a
   failed scan must stay immediately retryable rather than opening a window that
   swallows the next focus.
@@ -315,8 +306,8 @@ Every one of those paths goes through the same `refreshInventory` function:
   do not force. Both also bump the request counter and release the in-flight
   flag, so a scan started before the change cannot land its stale numbers or hold
   the gate shut.
-- A selection change also clears the inventory, the loading flag and the expanded
-  state, so the previous provider's numbers are never shown against the new one.
+- A selection change also clears the inventory and the loading flag, so the
+  previous provider's numbers are never shown against the new one.
 - The inventory keeps its own request token, separate from the provider
   check's (sharing one would let a scan cancel an in-flight check). The focus and
   visibility handlers read the live state, so none is left over from an earlier
@@ -392,11 +383,9 @@ above for what "with certainty" has to cover.
   test answers it: coalescing, one scan for a same-tick focus and visibility
   change, forced bypass, failed scans staying retryable, overlapping scans,
   selection changes orphaning a scan, and Reset rescanning.
-- `src/renderer/harness-artifacts-section.test.tsx` — Vitest runs in the `node`
-  environment (no DOM, no React Testing Library), so the hook-free components are
-  invoked as plain functions and the returned element tree is inspected. The
-  `renderedText` helper *invokes nested function components*; without that,
-  assertions about anything one component deep pass vacuously.
+- `src/renderer/workspace-explorer.test.tsx` — jsdom and React Testing
+  Library: no count while pending or after a failure, Try again, the empty
+  state, newest first, the truncated floor, and an artifact's details.
 - `src/renderer/agentbridge-page.tsx` only renders and forwards to the page
   state; it has no unit test, so its wiring is covered by `pnpm type:check` and
   a manual smoke test in Freelens.

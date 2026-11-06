@@ -1,8 +1,12 @@
+import type { EditorRole } from "../common/agentbridge-providers";
+import type { HarnessArtifact } from "../common/harness-artifacts";
+
 // Data-only registry of the capabilities the extension seeds into provider
 // workspaces (bundled commands, preloaded skills, custom agents, ...). Each
-// entry is a plain object describing one capability; a single generic card
-// (see capability-hints.tsx) renders every entry uniformly, so adding a new
-// capability is appending one object here — no bespoke component per capability.
+// entry is a plain object describing one capability; the workspace explorer
+// renders every applicable entry as one generic item (see
+// workspace-explorer.tsx), so adding a new capability is appending one object
+// here — no bespoke component per capability.
 //
 // The extension never runs these itself. The user invokes them inside a session;
 // each hint just explains what the capability produces and exactly how to invoke
@@ -20,7 +24,7 @@ export interface CapabilityInvocation {
 
 export interface CapabilityHint {
   readonly id: string;
-  // Groups and badges the card (Commands / Skills / Agents).
+  // Picks the default icon (Commands / Skills / Agents).
   readonly kind: CapabilityKind;
   // Material icon name; defaults per kind when omitted (see defaultIconForKind).
   readonly icon?: string;
@@ -29,26 +33,19 @@ export interface CapabilityHint {
   // Per-provider invocation text. Return null to hide this hint for the given
   // provider — non-null invocation is the single applicability gate.
   getInvocation(providerId: string): CapabilityInvocation | null;
-  // Optional trailing note, e.g. "The command is also editable below." — only
-  // true for capabilities that are also seeded as editable files, so it lives
-  // per-hint rather than being hardcoded in the card.
-  readonly footnote?: string;
+  // The role of the declared editors that hold this capability's seeded file,
+  // when it has one; the step shows those files in place.
+  readonly editorRole?: EditorRole;
+  // The artifact whose presence proves the capability has run in this
+  // workspace, if any can. Absent means the page cannot tell, and says nothing.
+  findEvidence?(artifacts: readonly HarnessArtifact[]): HarnessArtifact | undefined;
 }
 
-// Render order and human labels for the kind groups.
-export const CAPABILITY_KIND_ORDER: readonly CapabilityKind[] = ["command", "skill", "agent"];
-
+// Human labels for the kinds.
 export const CAPABILITY_KIND_LABEL: Record<CapabilityKind, string> = {
   command: "Commands",
   skill: "Skills",
   agent: "Agents",
-};
-
-// Singular badge label shown on each card.
-export const CAPABILITY_KIND_BADGE: Record<CapabilityKind, string> = {
-  command: "Command",
-  skill: "Skill",
-  agent: "Agent",
 };
 
 const DEFAULT_ICON_FOR_KIND: Record<CapabilityKind, string> = {
@@ -66,15 +63,19 @@ export function iconForHint(hint: CapabilityHint): string {
 }
 
 const CLUSTER_MAP_DESCRIPTION =
-  "Explores this cluster read-only (one agent per namespace, up to 5 in parallel) and writes a durable " +
-  "map: a short navigation map merged into the instructions file, one skill per namespace, and a " +
-  "cluster-level skill. Future sessions then start already knowing the cluster. It is idempotent — run " +
-  "it again any time to refresh.";
+  "Explores this cluster read-only, one agent per namespace and up to 5 in parallel, then writes a " +
+  "short navigation map into the instructions file, one skill per namespace and a cluster-level skill. " +
+  "Future sessions start already knowing the cluster. It is idempotent: run it again any time to refresh.";
+
+// Every provider's scaffold names the cluster-level skill `cluster-map-<cluster>`
+// (the per-namespace ones are `ns-map-<namespace>`), so its presence is the
+// proof that the map was built in this workspace.
+const CLUSTER_MAP_SKILL_PREFIX = "cluster-map-";
 
 // The bundled cluster-map command. Claude Code and OpenCode expose it as a
 // native slash command; Copilot CLI invokes it as a named skill via natural
 // language, and Codex mentions a skill with `$<name>`. It is seeded per provider
-// and also editable via the "Command" editor below the capabilities rail.
+// and its seeded file is editable in the same step (`editorRole: "command"`).
 //
 // The default is the slash command, so every branch here is a provider that does
 // NOT have project-local slash commands. Getting this wrong is not cosmetic: the
@@ -86,7 +87,9 @@ const clusterMapHint: CapabilityHint = {
   icon: "map",
   title: "Build a cluster map",
   description: CLUSTER_MAP_DESCRIPTION,
-  footnote: "The command is also editable below.",
+  editorRole: "command",
+  findEvidence: (artifacts) =>
+    artifacts.find((artifact) => artifact.kind === "skill" && artifact.name.startsWith(CLUSTER_MAP_SKILL_PREFIX)),
   getInvocation(providerId: string): CapabilityInvocation | null {
     if (providerId === "copilot") {
       return { verb: "Ask Copilot", command: "Use the build-cluster-map skill" };
@@ -108,22 +111,4 @@ export const capabilityHints: readonly CapabilityHint[] = [clusterMapHint];
 // The hints that apply to a given provider, in registry order.
 export function applicableCapabilityHints(providerId: string): CapabilityHint[] {
   return capabilityHints.filter((hint) => hint.getInvocation(providerId) !== null);
-}
-
-export interface CapabilityHintGroup {
-  readonly kind: CapabilityKind;
-  readonly label: string;
-  readonly hints: readonly CapabilityHint[];
-}
-
-// Applicable hints grouped by kind in CAPABILITY_KIND_ORDER, skipping empty
-// groups so the section never renders an empty "Skills" header.
-export function groupApplicableCapabilityHints(providerId: string): CapabilityHintGroup[] {
-  const applicable = applicableCapabilityHints(providerId);
-
-  return CAPABILITY_KIND_ORDER.map((kind) => ({
-    kind,
-    label: CAPABILITY_KIND_LABEL[kind],
-    hints: applicable.filter((hint) => hint.kind === kind),
-  })).filter((group) => group.hints.length > 0);
 }

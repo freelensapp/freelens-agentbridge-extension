@@ -1,9 +1,11 @@
 import { observer } from "mobx-react";
 import { useEffect, useRef, useState } from "react";
 import { ipcChannels } from "../common/ipc-channels";
+import styles from "./agentbridge-page.module.scss";
 import { CodeEditor } from "./code-editor";
 import { monacoLanguageFor } from "./editor-language";
 import { invoke } from "./ipc";
+import { fileLabel } from "./page-model";
 import { createSaveLifecycle } from "./save-lifecycle";
 
 import type { EditorDefinition } from "../common/agentbridge-providers";
@@ -18,6 +20,9 @@ interface ProviderFileEditorProps {
   editor: EditorDefinition;
 }
 
+// Reads one declared file, then autosaves every change after a short pause. A
+// change still waiting for its pause is written at once when the file, the
+// provider or the cluster changes, so switching never drops an edit.
 export const ProviderFileEditor = observer(function ProviderFileEditor({
   clusterId,
   providerId,
@@ -25,9 +30,13 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
 }: ProviderFileEditorProps) {
   const [content, setContent] = useState("");
   const [loaded, setLoaded] = useState(false);
+  // A file that could not be read is never shown as an empty, editable one:
+  // the first keystroke would overwrite it.
+  const [loadError, setLoadError] = useState<string>();
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string>();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingWrite = useRef<() => void>(undefined);
   const saveLifecycle = useRef(createSaveLifecycle()).current;
   const currentEditor = useRef({ clusterId, providerId, path: editor.path });
 
@@ -38,6 +47,7 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
 
     saveLifecycle.invalidate();
     setLoaded(false);
+    setLoadError(undefined);
     setStatus("idle");
     setError(undefined);
     void invoke(ipcChannels.readProviderFile, clusterId, providerId, editor.path)
@@ -48,14 +58,15 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setStatus("error");
-        setLoaded(true);
+        setLoadError(err instanceof Error ? err.message : String(err));
       });
 
     return () => {
       cancelled = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      // Flush, not drop: the write targets the file it was typed into.
+      pendingWrite.current?.();
+      pendingWrite.current = undefined;
       saveLifecycle.invalidate();
     };
   }, [clusterId, providerId, editor.path]);
@@ -68,11 +79,8 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
       currentEditor.current.clusterId === clusterId &&
       currentEditor.current.providerId === providerId &&
       currentEditor.current.path === editor.path;
-
-    setContent(next);
-    setStatus("saving");
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    const write = () => {
+      pendingWrite.current = undefined;
       void invoke(ipcChannels.writeProviderFile, clusterId, providerId, editor.path, next)
         .then(() => {
           if (!isCurrentEditor()) return;
@@ -87,45 +95,49 @@ export const ProviderFileEditor = observer(function ProviderFileEditor({
           setStatus("error");
           setError(err instanceof Error ? err.message : String(err));
         });
-    }, SAVE_DEBOUNCE_MS);
+    };
+
+    setContent(next);
+    setStatus("saving");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    pendingWrite.current = write;
+    debounceRef.current = setTimeout(write, SAVE_DEBOUNCE_MS);
   }
 
-  const badge =
-    status === "saving"
-      ? { text: "Saving...", color: "var(--colorWarning)" }
-      : status === "saved"
-        ? { text: "Saved", color: "var(--colorOk)" }
-        : status === "error"
-          ? { text: `Save failed: ${error ?? "unknown"}`, color: "var(--colorError)" }
-          : { text: "", color: "#888" };
+  const statusText = { idle: "Autosaves as you type", saving: "Saving…", saved: "Saved", error: "Not saved" }[status];
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--borderColor)",
-        borderRadius: "4px",
-        padding: "12px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.5rem",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong>{editor.title}</strong>
-        {badge.text && <span style={{ color: badge.color, fontSize: "0.85em" }}>{badge.text}</span>}
+    <div className={styles.files}>
+      <div className={styles.fileBar}>
+        <span className={styles.fileName} title={editor.path}>
+          {editor.path}
+        </span>
+        {/* Shown, not announced: "Saving…" after every pause would talk over
+            the typing. A failed save is announced on its own below. */}
+        <span className={styles.fileStatus} data-status={status} aria-hidden>
+          {statusText}
+        </span>
       </div>
-      <div style={{ border: "1px solid var(--borderColor)", height: "360px", resize: "vertical", overflow: "hidden" }}>
+      <div className={styles.editorFrame}>
         {loaded ? (
           <CodeEditor
             key={`${clusterId}/${providerId}/${editor.path}`}
             language={monacoLanguageFor(editor.language)}
             initialValue={content}
             onChange={onChange}
+            ariaLabel={editor.path}
           />
         ) : (
-          <p style={{ padding: "0.5rem" }}>Loading {editor.title}...</p>
+          <div className={styles.editorPlaceholder} role={loadError ? "alert" : undefined}>
+            {loadError ? `Could not open ${editor.path}: ${loadError}` : `Opening ${fileLabel(editor.path)}…`}
+          </div>
         )}
       </div>
+      {status === "error" && error && (
+        <div className={styles.fileError} role="alert">
+          Not saved: {error}
+        </div>
+      )}
     </div>
   );
 });

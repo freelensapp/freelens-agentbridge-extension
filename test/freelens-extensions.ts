@@ -10,6 +10,7 @@
 // tests are type-checked against the real declaration of the package. Extend it
 // as the tests need more of the host API; a test that needs a member to behave
 // differently mocks the module itself with `vi.mock`.
+import { createElement } from "react";
 import { vi } from "vitest";
 
 class LensExtension {
@@ -31,6 +32,18 @@ function Icon() {
   return null;
 }
 
+// Renders its children in a native button, so tests can find and click it by
+// its label; `href` makes it a link, as the host's does.
+function Button({ label, children, href, onClick, disabled }: Record<string, any>) {
+  return href
+    ? createElement("a", { href }, label, children)
+    : createElement("button", { type: "button", onClick, disabled }, label, children);
+}
+
+function Avatar({ title }: { title: string }) {
+  return createElement("span", { "data-avatar": title });
+}
+
 export const Main = {
   LensExtension,
   Ipc,
@@ -41,6 +54,13 @@ export const Renderer = {
   Ipc,
   Component: {
     Icon,
+    Button,
+    Avatar,
+    Notifications: {
+      ok: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+    },
   },
 };
 

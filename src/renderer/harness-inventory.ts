@@ -1,5 +1,4 @@
-import { HARNESS_ARTIFACT_KIND_ORDER } from "../common/harness-artifacts";
-import { CAPABILITY_KIND_LABEL, defaultIconForKind } from "./capability-hints";
+import { CAPABILITY_KIND_LABEL } from "./capability-hints";
 
 import type { HarnessArtifactGroup, HarnessArtifactKind } from "../common/harness-artifacts";
 
@@ -10,32 +9,6 @@ import type { HarnessArtifactGroup, HarnessArtifactKind } from "../common/harnes
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
-
-// Singular label per kind, for chip text. The plural comes from
-// CAPABILITY_KIND_LABEL, which the capabilities rail already owns.
-const ARTIFACT_KIND_SINGULAR: Record<HarnessArtifactKind, string> = {
-  skill: "skill",
-  agent: "agent",
-};
-
-export interface InventoryChip {
-  readonly kind: HarnessArtifactKind;
-  readonly label: string;
-  readonly count: number;
-  readonly truncated: boolean;
-}
-
-export interface InventorySummary {
-  // Non-empty kinds only, in registry order.
-  readonly chips: readonly InventoryChip[];
-  readonly totalCount: number;
-  // Age of the newest artifact across all kinds: "when did anything last change".
-  readonly ageLabel?: string;
-}
-
-export function iconForArtifactKind(kind: HarnessArtifactKind): string {
-  return defaultIconForKind(kind);
-}
 
 export function labelForArtifactKind(kind: HarnessArtifactKind): string {
   return CAPABILITY_KIND_LABEL[kind];
@@ -53,37 +26,8 @@ export function formatRelativeAge(mtimeMs: number, nowMs: number): string {
   return `${Math.floor(elapsed / DAY_MS)}d ago`;
 }
 
-export function chipLabel(kind: HarnessArtifactKind, count: number, truncated: boolean): string {
-  const noun = count === 1 ? ARTIFACT_KIND_SINGULAR[kind] : `${ARTIFACT_KIND_SINGULAR[kind]}s`;
-
-  return `${count}${truncated ? "+" : ""} ${noun}`;
-}
-
-export function summarizeInventory(groups: readonly HarnessArtifactGroup[], nowMs: number): InventorySummary {
-  const ordered = HARNESS_ARTIFACT_KIND_ORDER.flatMap((kind) => groups.filter((group) => group.kind === kind));
-  const newest = ordered.reduce<number | undefined>(
-    (latest, group) =>
-      group.newestMtimeMs === undefined ? latest : Math.max(latest ?? group.newestMtimeMs, group.newestMtimeMs),
-    undefined,
-  );
-
-  return {
-    chips: ordered
-      .filter((group) => group.count > 0)
-      .map((group) => ({
-        kind: group.kind,
-        label: chipLabel(group.kind, group.count, group.truncated),
-        count: group.count,
-        truncated: group.truncated,
-      })),
-    totalCount: ordered.reduce((total, group) => total + group.count, 0),
-    ageLabel: newest === undefined ? undefined : formatRelativeAge(newest, nowMs),
-  };
-}
-
-// Total across kinds, carrying truncation the same way the header chips do: a
-// truncated kind makes the total a floor, so "3" would claim a precision the
-// scan never had while the chip beside it already says "2+ skills".
+// Total across kinds, carrying truncation: a truncated kind makes the total a
+// floor, so "3" would claim a precision the scan never had.
 export function totalLabel(groups: readonly HarnessArtifactGroup[]): string {
   const total = groups.reduce((count, group) => count + group.count, 0);
 

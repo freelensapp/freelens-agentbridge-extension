@@ -51,7 +51,7 @@ Two Codex-specific things are worth knowing:
   read-only even inside a writable workspace. `build-cluster-map` writes its
   per-namespace skills under `.agents/skills/`, so Codex asks for approval
   before each one. Add this workspace's own `.agents` directory to
-  `writable_roots` (an absolute path — **Reveal workspace** gives it to you)
+  `writable_roots` (an absolute path — the copy button beside the workspace path at the top of the page gives it to you)
   to let them through without prompting.
 
 ## Skills and agents

@@ -2,7 +2,7 @@ import { Renderer } from "@freelensapp/extensions";
 import { AgentBridgePage } from "./agentbridge-page";
 import { withPageErrorBoundary } from "./components/error-boundary";
 import { activateIpc, deactivateIpc } from "./ipc";
-import { EditorCommandHint, EditorCommandSetting, ProbeTimeoutHint, ProbeTimeoutSetting } from "./settings-page";
+import { ExtensionSettings } from "./settings-page";
 
 const {
   Component: { Icon },
@@ -41,19 +41,12 @@ export default class AgentBridgeRendererExtension extends Renderer.LensExtension
 
   appPreferences = [
     {
-      id: "agentbridge-probe-timeout",
+      id: "agentbridge-settings",
       title: "Freelens Agent Bridge",
       components: {
-        Input: () => <ProbeTimeoutSetting />,
-        Hint: () => <ProbeTimeoutHint />,
-      },
-    },
-    {
-      id: "agentbridge-editor-command",
-      title: "Freelens Agent Bridge",
-      components: {
-        Input: () => <EditorCommandSetting />,
-        Hint: () => <EditorCommandHint />,
+        Input: () => <ExtensionSettings />,
+        // Each setting carries its own hint inside the block.
+        Hint: () => null,
       },
     },
   ];
