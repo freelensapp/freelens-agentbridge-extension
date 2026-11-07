@@ -2,7 +2,7 @@
 # To learn more about the format of this file, see https://docs.trunk.io/reference/trunk-yaml
 version: 0.1
 cli:
-  version: 1.25.0
+  version: 1.29.0
 # Trunk provides extensibility via plugins. (https://docs.trunk.io/plugins)
 plugins:
   sources:
@@ -98,7 +98,7 @@ lint:
     - actionlint@1.7.12
     - biome@2.5.15! # datasource=npm depName=@biomejs/biome
     - git-diff-check
-    - markdownlint@0.49.1
+    - markdownlint@0.50.0
     - prettier@3.9.9! # datasource=npm depName=prettier
     - shellcheck@0.11.0
     - shfmt@3.14.1
