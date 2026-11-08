@@ -26,7 +26,20 @@
     }
   },
   "files": {
-    "includes": ["**", "!**/.trunk/**", "!**/build/**", "!**/dist/**", "**/build/*.{js,cjs,mjs}"]
+    // Biome 2.6 started formatting Markdown, YAML and SCSS. Trunk owns them
+    // (markdownlint, yamlfmt, prettier) and Biome's output is not equivalent:
+    // it rewrites `*` to `_` inside front matter values and de-indents YAML
+    // front matter, which corrupts the scaffolds and DESIGN.md.
+    "includes": [
+      "**",
+      "!**/.trunk/**",
+      "!**/build/**",
+      "!**/dist/**",
+      "!**/*.md",
+      "!**/*.{yaml,yml}",
+      "!**/*.scss",
+      "**/build/*.{js,cjs,mjs}"
+    ]
   },
   "formatter": {
     "attributePosition": "auto",
