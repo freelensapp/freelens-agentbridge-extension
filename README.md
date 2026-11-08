@@ -13,7 +13,7 @@ cluster, one click away.**
 [![License: MIT](https://img.shields.io/github/license/freelensapp/freelens-agentbridge-extension)](./LICENSE)
 
 [Quick start](#quick-start) ·
-[Demos](#screenshots--demos) ·
+[Screenshots](#screenshots) ·
 [How it works](#how-it-works) ·
 [Configuration](docs/guide/configuration.md)
 
@@ -23,10 +23,11 @@ Pick OpenCode, Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, or Pi per
 cluster, click **Open session**, and the agent starts in a docked Freelens
 terminal with `KUBECONFIG` already pointed at the cluster you're looking at.
 
-https://github.com/user-attachments/assets/12e1571c-4ac2-42cc-82fb-cd6d5d245213
+![Demo: opening AgentBridge on a cluster, picking OpenCode, opening a session, and asking which pods have no resource limits](docs/images/agentbridge-demo.gif)
 
-_The agent finds an `OOMKilled` pod, proposes a new memory limit, and asks
-before applying it._
+_From the cluster to an answer, with the agent's work sped up 3×. Its piped
+`kubectl … | jq` commands are not on the read-only allow list, so the
+guardrails stop them for approval first._
 
 ## Why AgentBridge
 
@@ -77,6 +78,8 @@ supported only by the 1.x releases of this extension.
 
 Repeat on any other cluster: every workspace is independent.
 
+![The first visit to a cluster: pick a provider in the strip at the top](docs/images/agentbridge-intro.png)
+
 <details>
 <summary>Installing from a release tarball</summary>
 
@@ -101,17 +104,54 @@ Summarize the warning events from the last hour and group them by cause.
 Read-only commands such as `kubectl get`, `describe`, and `logs` run
 immediately. Anything that changes the cluster waits for your approval.
 
-## Screenshots & demos
+## Screenshots
 
-| Session                                                              | AgentBridge page                                                        |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| ![Agent session in a Freelens terminal](docs/images/agentbridge-session.jpg) | ![AgentBridge page with provider selection](docs/images/agentbridge-homepage.png) |
+### The page
 
-![Editing OpenCode guardrails in Freelens](docs/images/opencode-permission-settings.png)
+The bridge strip at the top links the cluster, the provider, and its
+workspace. Below it, the workspace explorer lists what the agent reads, what it
+may do, and what it has learned; the selected item opens on the right.
 
-The agent fixes a missing secret that crashes the pod:
+![The AgentBridge page in Freelens: OpenCode selected for the kind-lan-dev cluster, ready to open a session, with its instructions file open in the workspace explorer](docs/images/agentbridge-homepage.png)
 
-https://github.com/user-attachments/assets/3e404238-8e21-4363-ad9f-783a9bd41790
+### A session in the dock
+
+**Open session** starts the CLI in a Freelens terminal tab, inside the
+workspace and against the cluster on screen, while the page stays in view.
+
+![An OpenCode session in the Freelens dock, listing the pods that have no resource limits](docs/images/agentbridge-session.png)
+
+### An incident, end to end
+
+One prompt, from a crash-looping deployment to a verified fix. The agent reads
+logs, events, and endpoints on its own, then stops for approval before each
+change.
+
+![Demo: an OpenCode session asked why the checkout pods in shop-demo keep restarting. It reads the logs, events, and endpoints, finds a misspelled ConfigMap key and a Service selector that matches no pods, patches both after approval, restarts the rollout, and verifies it](docs/images/agentbridge-incident.gif)
+
+_A synthetic incident in a throwaway namespace on a local kind cluster, with
+the agent's work sped up 6× and its change approvals in real time. It found
+two causes: the app needs `PAYMENT_API_URL`, but its ConfigMap spelled the key
+`PAYMENT_API_URI`, and the `checkout` Service selected no pods. It patched
+both, restarted the rollout, checked the endpoints and the storefront, and
+noted that the same fixes belong in the manifests._
+
+### Guardrails
+
+Edited in place with autosave: read-only `kubectl` and `helm` run, everything
+else asks first.
+
+![The OpenCode guardrails open in the workspace explorer, with the reminder that RBAC is the security boundary](docs/images/opencode-permission-settings.png)
+
+### More of the page
+
+| Build a cluster map                                                                                                   | Skills the agent wrote                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| ![The Build a cluster map capability, built, with its command ready to copy](docs/images/agentbridge-cluster-map.png) | ![A namespace map skill written in a session, with its path](docs/images/agentbridge-skill.png)                     |
+| One command maps the cluster into a skill per namespace, so later sessions start already knowing it.                  | Every skill and agent in the workspace is listed, newest first, with where it came from.                            |
+| **Reset, with the exact paths**                                                                                       | **A missing CLI is never installed for you**                                                                        |
+| ![The Reset confirmation listing the files it restores](docs/images/agentbridge-reset.png)                            | ![Claude Code not installed, with the installation guide one click away](docs/images/agentbridge-not-installed.png) |
+| The confirmation names every file it puts back; instructions and skills stay as they are.                             | AgentBridge only checks the `PATH`, then links the official installation guide.                                     |
 
 ## How it works
 

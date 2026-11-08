@@ -72,7 +72,7 @@ cluster map skills) that outlives every session.
 
 ## Evidence on Hand
 
-- docs/images/: page and session screenshots; README demo videos.
+- docs/images/: page and session screenshots; the README demo GIF.
 - No customer quotes, metrics or benchmarks; none may be invented.
 
 ## Product Principles
