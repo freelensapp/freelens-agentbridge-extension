@@ -1,48 +1,33 @@
-import { type AgentBridgeProviderId, agentBridgeProviders } from "../common/agentbridge-providers";
+import { ipcChannels } from "../common/ipc-channels";
 
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
+import type { AgentBridgeProviderId } from "../common/agentbridge-providers";
+import type { IpcInvoke } from "../common/ipc-channels";
+
+// The provider each cluster's page opens on. Main keeps it under userData: the
+// renderer's localStorage does not survive a restart, because every renderer
+// origin carries the host proxy's port, which changes on each start.
+export interface ProviderSelectionStore {
+  load(clusterId: string): Promise<AgentBridgeProviderId | undefined>;
+  save(clusterId: string, providerId: AgentBridgeProviderId): Promise<void>;
 }
 
-function storageKey(clusterId: string): string {
-  return `agentbridge-extension:selected-provider:${clusterId}`;
-}
+export function createProviderSelectionStore(invoke: IpcInvoke): ProviderSelectionStore {
+  return {
+    async load(clusterId) {
+      try {
+        return (await invoke(ipcChannels.getSelectedProvider, clusterId)) ?? undefined;
+      } catch {
+        // Without a saved selection the page asks for a provider again.
+        return undefined;
+      }
+    },
 
-function isProviderId(value: string): value is AgentBridgeProviderId {
-  return agentBridgeProviders.some((provider) => provider.id === value);
-}
-
-export function loadSelectedProvider(clusterId: string, storage?: StorageLike): AgentBridgeProviderId | undefined {
-  const key = storageKey(clusterId);
-
-  try {
-    const providerId = (storage ?? globalThis.localStorage)?.getItem(key);
-
-    if (!providerId) {
-      return undefined;
-    }
-    if (isProviderId(providerId)) {
-      return providerId;
-    }
-
-    (storage ?? globalThis.localStorage)?.removeItem(key);
-  } catch {
-    // Storage is optional in renderer environments with privacy restrictions.
-  }
-
-  return undefined;
-}
-
-export function saveSelectedProvider(
-  clusterId: string,
-  providerId: AgentBridgeProviderId,
-  storage?: StorageLike,
-): void {
-  try {
-    (storage ?? globalThis.localStorage)?.setItem(storageKey(clusterId), providerId);
-  } catch {
-    // Keep selection in caller state when persistence is unavailable.
-  }
+    async save(clusterId, providerId) {
+      try {
+        await invoke(ipcChannels.setSelectedProvider, clusterId, providerId);
+      } catch {
+        // The page state keeps the selection for this session.
+      }
+    },
+  };
 }

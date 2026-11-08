@@ -23,6 +23,8 @@
   - Read-only inventory of workspace skills and custom agents; bounded frontmatter metadata extraction.
 - `src/main/check-provider.ts`, `open-in-editor.ts`, `extension-settings-store.ts`
   - Provider executable probes, external editor launch, and JSON settings persistence.
+- `src/main/provider-selection-store.ts`
+  - Per-cluster provider selection persisted as JSON under `userData`; validates the cluster ID and provider ID before writing.
 - `src/main/scaffolds/`
   - Provider-native instruction, permission, command, and skill templates seeded into new workspaces. Data, not source: excluded from the main TypeScript program and from knip.
 - `src/renderer/index.tsx`
@@ -32,7 +34,7 @@
 - `src/renderer/components/`
   - Error boundary and error page from the extension template; a render error replaces the cluster page, not the cluster's whole main area.
 - `src/renderer/agentbridge-page-state.ts`
-  - React-free page state: the active cluster's selected provider, its readiness check, the workspace inventory scan (coalescing, in-flight gate, stale-result tokens), and the reveal/open/reset actions. Takes `invoke`, storage and a clock; the page subscribes with `useSyncExternalStore`.
+  - React-free page state: the active cluster's selected provider, its readiness check, the workspace inventory scan (coalescing, in-flight gate, stale-result tokens), and the reveal/open/reset actions. Takes `invoke`, the provider selection store and a clock; the page subscribes with `useSyncExternalStore`.
 - `src/renderer/agentbridge-page.tsx`, `agentbridge-page.module.scss`
   - The cluster page: the bridge strip, the session bar (the selected provider's state, workspace actions and Open session), then the workspace explorer. Renders the page state, forwards user intent to it, asks for Reset confirmation, shows notifications, and launches sessions. The stylesheet is the page's only one and uses host theme variables only; `DESIGN.md` describes its system.
 - `src/renderer/bridge-header.tsx`, `provider-marks.tsx`
@@ -44,7 +46,7 @@
 - `src/renderer/page-model.ts`
   - React-free view logic for the page: which declared files the explorer lists under which heading (`groupEditors`), the default selection, the shortened workspace path, and whether a capability has run (`capabilityProgress`).
 - `src/renderer/provider-selection.ts`
-  - Per-cluster provider selection in `localStorage`.
+  - Per-cluster provider selection, loaded from and saved to main over IPC (`get-selected-provider`, `set-selected-provider`). Not `localStorage`: every renderer origin carries the Freelens proxy's port, which changes on each start, and Freelens clears `localStorage` at startup.
 - `src/renderer/provider-file-editor.tsx`, `code-editor.tsx`, `editor-language.ts`
   - Declared-file editor with debounced IPC saves, and a pending save written at once when another file opens; `CodeEditor`, a Monaco editor on the host's Monaco instance (`import { editor } from "monaco-editor"`, mapped to the host global) with the host theme; and the map from a declared file's syntax to a language id the host's Monaco can show.
 - `src/renderer/launch-session.ts`, `renderer-launch.ts`, `get-launch-command.ts`
@@ -69,7 +71,7 @@
 ## Data Flow
 
 - Freelens supplies active cluster ID and host UI APIs to renderer.
-- Renderer restores selected provider per cluster from `localStorage`.
+- Renderer restores selected provider per cluster from main over IPC; until main answers, the page shows neither the previous cluster nor "Choose a provider".
 - Renderer invokes main IPC to run the selected provider's `<executable> --version`; main returns `ready`, `missing`, or `error`. Only the selected provider is probed.
 - When ready, renderer requests workspace preparation.
 - Main derives `<userData>/agentbridge-sessions/<safe-cluster-id>/<provider-id>/`, verifies real-path containment, and writes missing declared files from the scaffolds embedded in the main bundle.
@@ -81,10 +83,10 @@
 
 ## Persistence
 
-- Provider selection: renderer `localStorage`, keyed by cluster ID.
+- Provider selection: `userData/agentbridge-provider-selections.json`, keyed by cluster ID.
 - Provider workspaces: Freelens `userData/agentbridge-sessions/`, partitioned by safe cluster key and provider ID.
 - Extension preferences: `userData/agentbridge-extension-settings.json`.
-- Both stay under Electron `userData`, where the 1.x releases kept them, so upgrading to the v2 line keeps the user's files.
+- Workspaces and preferences stay under Electron `userData`, where the 1.x releases kept them, so upgrading to the v2 line keeps the user's files. Provider selections were in `localStorage` before and did not survive a restart, so there is nothing to migrate.
 - Reset removes only provider registry `resetPaths`, then restores those files from the embedded scaffolds; instructions and unrelated workspace files remain.
 
 ## Key Abstractions

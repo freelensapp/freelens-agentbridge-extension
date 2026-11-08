@@ -51,8 +51,9 @@ export const AgentBridgePage = observer(function AgentBridgePage() {
   const clusterId = cluster?.id;
   const [pageState] = useState(() => createAgentBridgePageState({ invoke }));
   const snapshot = useSyncExternalStore(pageState.subscribe, pageState.getSnapshot);
-  // Until the effect below catches up with a cluster switch, the snapshot still
-  // describes the previous cluster: render nothing of it.
+  // Until the effect below catches up with a cluster switch, and main has
+  // answered with the cluster's saved provider, the snapshot still describes
+  // the previous cluster: render nothing of it.
   const hasCurrentSelection = snapshot.clusterId === clusterId;
   const providerId = hasCurrentSelection ? snapshot.providerId : undefined;
   const provider = providerId ? getAgentBridgeProvider(providerId) : undefined;
@@ -60,7 +61,7 @@ export const AgentBridgePage = observer(function AgentBridgePage() {
   const workdir = hasCurrentSelection && state.status === "ready" ? state.workdir : undefined;
 
   useEffect(() => {
-    pageState.setCluster(clusterId);
+    void pageState.setCluster(clusterId);
   }, [clusterId]);
 
   useEffect(() => () => pageState.dispose(), []);
@@ -97,7 +98,10 @@ export const AgentBridgePage = observer(function AgentBridgePage() {
         <div className={styles.body}>
           <p className={styles.lede}>Open a cluster first: every session runs against the cluster on screen.</p>
         </div>
-      ) : provider && hasCurrentSelection ? (
+      ) : !hasCurrentSelection ? (
+        // Not "Choose a provider" yet: the saved one may be on its way.
+        <div className={styles.body} />
+      ) : provider ? (
         <ProviderView
           // A new provider or cluster starts on its instructions file.
           key={`${clusterId}/${provider.id}`}

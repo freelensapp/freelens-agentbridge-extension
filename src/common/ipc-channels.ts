@@ -1,4 +1,4 @@
-import type { PrepareWorkspaceResult, ProviderCheckResult } from "./agentbridge-providers";
+import type { AgentBridgeProviderId, PrepareWorkspaceResult, ProviderCheckResult } from "./agentbridge-providers";
 import type { ExtensionSettings } from "./extension-settings";
 import type { HarnessInventoryResult } from "./harness-artifacts";
 
@@ -17,6 +17,8 @@ export const ipcChannels = {
   getSettings: "get-settings",
   setSettings: "set-settings",
   listProviderArtifacts: "list-provider-artifacts",
+  getSelectedProvider: "get-selected-provider",
+  setSelectedProvider: "set-selected-provider",
 } as const;
 
 // The outcome of an action the user can retry. Main builds it at the handler
@@ -55,6 +57,9 @@ export interface IpcContract {
   // renderer that saves only its own field does not reset the others.
   "set-settings": { args: [settings: Partial<ExtensionSettings>]; result: ExtensionSettings };
   "list-provider-artifacts": { args: [clusterId: string, providerId: string]; result: HarnessInventoryResult };
+  // The provider the cluster's page opens on; null when none was chosen yet.
+  "get-selected-provider": { args: [clusterId: string]; result: AgentBridgeProviderId | null };
+  "set-selected-provider": { args: [clusterId: string, providerId: string]; result: void };
 }
 
 export type IpcChannel = keyof IpcContract;

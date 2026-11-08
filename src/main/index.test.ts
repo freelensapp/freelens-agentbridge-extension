@@ -12,11 +12,13 @@ const mocks = vi.hoisted(() => ({
   prepareProviderWorkspace: vi.fn(),
   readExtensionSettings: vi.fn(() => ({ probeTimeoutMs: 15_000, editorCommand: "code", editorUriScheme: "vscode" })),
   readProviderFile: vi.fn(),
+  readSelectedProvider: vi.fn(() => "claude"),
   resetIpc: vi.fn(),
   resetProvider: vi.fn(),
   revealProviderWorkspace: vi.fn(),
   writeExtensionSettings: vi.fn((_userData: string, settings: unknown) => settings),
   writeProviderFile: vi.fn(),
+  writeSelectedProvider: vi.fn(),
 }));
 
 // The host's `Main.Ipc` is a singleton per subclass, created with the
@@ -48,6 +50,10 @@ vi.mock("./open-in-editor", () => ({ openWorkspaceInEditor: mocks.openWorkspaceI
 vi.mock("./extension-settings-store", () => ({
   readExtensionSettings: mocks.readExtensionSettings,
   writeExtensionSettings: mocks.writeExtensionSettings,
+}));
+vi.mock("./provider-selection-store", () => ({
+  readSelectedProvider: mocks.readSelectedProvider,
+  writeSelectedProvider: mocks.writeSelectedProvider,
 }));
 vi.mock("./provider-files", () => ({
   prepareProviderWorkspace: mocks.prepareProviderWorkspace,
@@ -92,6 +98,8 @@ describe("AgentBridgeMainExtension", () => {
       "get-settings",
       "set-settings",
       "list-provider-artifacts",
+      "get-selected-provider",
+      "set-selected-provider",
     ]);
     expect(Object.values(ipcChannels).sort()).toEqual(mocks.handle.mock.calls.map(([channel]) => channel).sort());
 
@@ -105,6 +113,8 @@ describe("AgentBridgeMainExtension", () => {
     await getHandler(ipcChannels.getSettings)({});
     await getHandler(ipcChannels.setSettings)({}, { probeTimeoutMs: 30_000 });
     await getHandler(ipcChannels.listProviderArtifacts)({}, "cluster-1", "claude");
+    expect(getHandler(ipcChannels.getSelectedProvider)({}, "cluster-1")).toBe("claude");
+    await getHandler(ipcChannels.setSelectedProvider)({}, "cluster-1", "codex");
 
     expect(mocks.checkProvider).toHaveBeenCalledWith("claude", undefined, 15_000);
     expect(mocks.readExtensionSettings).toHaveBeenCalledWith("/user-data");
@@ -120,6 +130,8 @@ describe("AgentBridgeMainExtension", () => {
     });
     expect(mocks.resetProvider).toHaveBeenCalledWith("/user-data", "cluster-1", "claude");
     expect(mocks.listProviderArtifacts).toHaveBeenCalledWith("/user-data", "cluster-1", "claude");
+    expect(mocks.readSelectedProvider).toHaveBeenCalledWith("/user-data", "cluster-1");
+    expect(mocks.writeSelectedProvider).toHaveBeenCalledWith("/user-data", "cluster-1", "codex");
   });
 
   // A reload under `pnpm dev`, or disabling and enabling the extension, runs

@@ -1,10 +1,10 @@
 import { ipcChannels } from "../common/ipc-channels";
-import { loadSelectedProvider, saveSelectedProvider } from "./provider-selection";
+import { createProviderSelectionStore } from "./provider-selection";
 
 import type { AgentBridgeProviderId, ProviderCheckResult } from "../common/agentbridge-providers";
 import type { HarnessInventoryResult } from "../common/harness-artifacts";
 import type { ActionResult, IpcInvoke } from "../common/ipc-channels";
-import type { StorageLike } from "./provider-selection";
+import type { ProviderSelectionStore } from "./provider-selection";
 
 // Everything the cluster page knows besides what it renders: the provider
 // selected for the active cluster, that provider's readiness, and the workspace
@@ -36,7 +36,8 @@ export interface AgentBridgePageSnapshot {
 
 export interface AgentBridgePageStateDeps {
   readonly invoke: IpcInvoke;
-  readonly storage?: StorageLike;
+  // Defaults to the one main keeps, reached through `invoke`.
+  readonly selections?: ProviderSelectionStore;
   readonly now?: () => number;
 }
 
@@ -44,8 +45,10 @@ export interface AgentBridgePageState {
   getSnapshot(): AgentBridgePageSnapshot;
   subscribe(listener: () => void): () => void;
   // Follows the host's active cluster. Restores that cluster's saved provider
-  // and checks it; calling it again with the same cluster is a no-op.
-  setCluster(clusterId: string | undefined): void;
+  // and checks it; calling it again with the same cluster is a no-op. The
+  // snapshot keeps the previous cluster until the saved provider is known, and
+  // the promise resolves then (or when a later call supersedes this one).
+  setCluster(clusterId: string | undefined): Promise<void>;
   selectProvider(providerId: AgentBridgeProviderId): void;
   // Checks the selected provider again.
   retry(): void;
@@ -67,7 +70,7 @@ function describeError(error: unknown): string {
 
 export function createAgentBridgePageState({
   invoke,
-  storage,
+  selections = createProviderSelectionStore(invoke),
   now = Date.now,
 }: AgentBridgePageStateDeps): AgentBridgePageState {
   let snapshot: AgentBridgePageSnapshot = {
@@ -76,11 +79,15 @@ export function createAgentBridgePageState({
     scanNowMs: now(),
   };
   let active = false;
+  // The cluster setCluster was last called with. It is ahead of
+  // `snapshot.clusterId` while that cluster's saved provider loads.
+  let requestedClusterId: string | undefined;
   const listeners = new Set<() => void>();
 
   // Each async operation keeps its own token; a response is applied only while
   // its token is still the latest. Separate tokens, because a scan must not
   // cancel a provider check and the other way round.
+  let restoreToken = 0;
   let checkToken = 0;
   let inventoryToken = 0;
   // Written when a scan starts, not when it lands: restoring the window fires
@@ -210,17 +217,34 @@ export function createAgentBridgePageState({
       return () => listeners.delete(listener);
     },
 
-    setCluster(clusterId) {
-      if (active && clusterId === snapshot.clusterId) return;
+    async setCluster(clusterId) {
+      if (active && clusterId === requestedClusterId) return;
       active = true;
-      select(clusterId, clusterId ? loadSelectedProvider(clusterId, storage) : undefined);
+      requestedClusterId = clusterId;
+      const token = ++restoreToken;
+
+      // Nothing the previous cluster still has in flight may land meanwhile.
+      checkToken++;
+      invalidateInventory();
+      if (!clusterId) {
+        select(undefined, undefined);
+        return;
+      }
+
+      const providerId = await selections.load(clusterId);
+
+      // Superseded by another cluster, a provider picked meanwhile, or dispose.
+      if (token === restoreToken) select(clusterId, providerId);
     },
 
     selectProvider(providerId) {
-      const { clusterId } = snapshot;
+      // The cluster on screen, even while its saved provider is still loading.
+      const clusterId = requestedClusterId;
+      const checking = snapshot.clusterId === clusterId && snapshot.provider.status === "loading";
 
-      if (!clusterId || (snapshot.provider.status === "loading" && providerId === snapshot.providerId)) return;
-      saveSelectedProvider(clusterId, providerId, storage);
+      if (!clusterId || (checking && providerId === snapshot.providerId)) return;
+      restoreToken++;
+      void selections.save(clusterId, providerId);
       select(clusterId, providerId);
     },
 
@@ -255,6 +279,7 @@ export function createAgentBridgePageState({
 
     dispose() {
       active = false;
+      restoreToken++;
       checkToken++;
       invalidateInventory();
       update({ provider: { status: "idle" }, inventoryLoading: false });

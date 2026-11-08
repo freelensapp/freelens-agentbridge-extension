@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createAgentBridgePageState, REFRESH_COALESCE_MS } from "./agentbridge-page-state";
 
+import type { AgentBridgeProviderId } from "../common/agentbridge-providers";
 import type { IpcChannel, IpcInvoke } from "../common/ipc-channels";
-import type { StorageLike } from "./provider-selection";
+import type { ProviderSelectionStore } from "./provider-selection";
 
 interface PendingCall {
   readonly channel: IpcChannel;
@@ -53,45 +54,62 @@ async function flush() {
   for (let turn = 0; turn < 5; turn++) await Promise.resolve();
 }
 
-class MemoryStorage implements StorageLike {
-  readonly values = new Map<string, string>();
+// Holds every load when `hold` is set, so a restore that is still in flight
+// can be raced; otherwise answers on the next microtask, as main would.
+function createFakeSelections(saved: Record<string, string>, { hold = false } = {}) {
+  const values = new Map(Object.entries(saved));
+  const held: Array<() => void> = [];
+  const loads: string[] = [];
+  const store: ProviderSelectionStore = {
+    load(clusterId) {
+      loads.push(clusterId);
+      // What main has at the time of the request, as a held response would.
+      const value = values.get(clusterId) as AgentBridgeProviderId | undefined;
 
-  getItem(key: string): string | null {
-    return this.values.get(key) ?? null;
-  }
+      if (!hold) return Promise.resolve(value);
+      return new Promise((resolve) => held.push(() => resolve(value)));
+    },
+    async save(clusterId, providerId) {
+      values.set(clusterId, providerId);
+    },
+  };
 
-  setItem(key: string, value: string): void {
-    this.values.set(key, value);
-  }
+  return {
+    store,
+    values,
+    loads,
+    async release(index = 0) {
+      const respond = held.splice(index, 1)[0];
 
-  removeItem(key: string): void {
-    this.values.delete(key);
-  }
+      if (!respond) throw new Error(`No held load at ${index}`);
+      respond();
+      await flush();
+    },
+  };
 }
 
 const READY = { status: "ready", version: "1.2.3" };
 const WORKSPACE = { workdir: "/work/cluster-a/claude", seeded: false };
 const INVENTORY = { status: "ok", groups: [] };
 
-function setup({ saved }: { saved?: Record<string, string> } = {}) {
+function setup({ saved, hold }: { saved?: Record<string, string>; hold?: boolean } = {}) {
   const ipc = createFakeInvoke();
-  const storage = new MemoryStorage();
+  const selections = createFakeSelections(saved ?? {}, { hold });
   const clock = { nowMs: 1_000_000 };
+  const state = createAgentBridgePageState({
+    invoke: ipc.invoke,
+    selections: selections.store,
+    now: () => clock.nowMs,
+  });
 
-  for (const [clusterId, providerId] of Object.entries(saved ?? {})) {
-    storage.setItem(`agentbridge-extension:selected-provider:${clusterId}`, providerId);
-  }
-
-  const state = createAgentBridgePageState({ invoke: ipc.invoke, storage, now: () => clock.nowMs });
-
-  return { ipc, storage, clock, state };
+  return { ipc, selections, clock, state };
 }
 
 // Drives cluster-a/claude to "ready" with its first scan landed.
 async function setupReady() {
   const context = setup({ saved: { "cluster-a": "claude" } });
 
-  context.state.setCluster("cluster-a");
+  await context.state.setCluster("cluster-a");
   await context.ipc.resolve("check-provider", READY);
   await context.ipc.resolve("prepare-workspace", WORKSPACE);
   await context.ipc.resolve("list-provider-artifacts", INVENTORY);
@@ -99,10 +117,10 @@ async function setupReady() {
 }
 
 describe("provider selection", () => {
-  it("stays idle without invoking main when the cluster has no saved provider", () => {
+  it("stays idle without invoking main when the cluster has no saved provider", async () => {
     const { ipc, state } = setup();
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
 
     expect(state.getSnapshot()).toMatchObject({
       clusterId: "cluster-a",
@@ -112,59 +130,60 @@ describe("provider selection", () => {
     expect(ipc.calls).toHaveLength(0);
   });
 
-  it("restores each cluster's saved provider", () => {
+  it("restores each cluster's saved provider", async () => {
     const { state } = setup({ saved: { "cluster-a": "opencode", "cluster-b": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     expect(state.getSnapshot().providerId).toBe("opencode");
-    state.setCluster("cluster-b");
+    await state.setCluster("cluster-b");
     expect(state.getSnapshot().providerId).toBe("claude");
   });
 
-  it("persists a selection for the active cluster only", () => {
-    const { storage, state } = setup();
+  it("persists a selection for the active cluster only", async () => {
+    const { selections, state } = setup();
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     state.selectProvider("codex");
 
-    expect(storage.getItem("agentbridge-extension:selected-provider:cluster-a")).toBe("codex");
-    expect(storage.values.size).toBe(1);
+    expect(Object.fromEntries(selections.values)).toEqual({ "cluster-a": "codex" });
   });
 
-  it("ignores a selection while no cluster is active", () => {
-    const { ipc, state } = setup();
+  it("ignores a selection while no cluster is active", async () => {
+    const { ipc, selections, state } = setup();
 
-    state.setCluster(undefined);
+    await state.setCluster(undefined);
     state.selectProvider("claude");
 
     expect(state.getSnapshot().providerId).toBeUndefined();
     expect(ipc.calls).toHaveLength(0);
+    expect(selections.loads).toHaveLength(0);
+    expect(selections.values.size).toBe(0);
   });
 
-  it("does not restart a check when the active cluster is set again", () => {
+  it("does not restart a check when the active cluster is set again", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
 
     expect(ipc.count("check-provider")).toBe(1);
   });
 
-  it("ignores re-selecting the provider that is being checked", () => {
+  it("ignores re-selecting the provider that is being checked", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     state.selectProvider("claude");
 
     expect(ipc.count("check-provider")).toBe(1);
   });
 
-  it("notifies subscribers with a new snapshot", () => {
+  it("notifies subscribers with a new snapshot", async () => {
     const { state } = setup();
     const snapshots: unknown[] = [];
     const unsubscribe = state.subscribe(() => snapshots.push(state.getSnapshot()));
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     unsubscribe();
     state.selectProvider("claude");
 
@@ -173,11 +192,73 @@ describe("provider selection", () => {
   });
 });
 
+// The saved selection comes from main, so it arrives after setCluster returns.
+describe("restoring the saved provider", () => {
+  it("keeps describing the previous cluster until the saved provider is known", async () => {
+    const { ipc, selections, state } = setup({ saved: { "cluster-a": "claude" }, hold: true });
+
+    void state.setCluster("cluster-a");
+    expect(state.getSnapshot().clusterId).toBeUndefined();
+    expect(state.getSnapshot().providerId).toBeUndefined();
+    expect(ipc.calls).toHaveLength(0);
+
+    await selections.release();
+    expect(state.getSnapshot()).toMatchObject({ clusterId: "cluster-a", providerId: "claude" });
+    expect(ipc.calls[0]).toMatchObject({ channel: "check-provider", args: ["claude"] });
+  });
+
+  it("loads once when the same cluster is set again while loading", async () => {
+    const { selections, state } = setup({ saved: { "cluster-a": "claude" }, hold: true });
+
+    void state.setCluster("cluster-a");
+    void state.setCluster("cluster-a");
+
+    expect(selections.loads).toEqual(["cluster-a"]);
+  });
+
+  it("drops the saved provider of a cluster the user already left", async () => {
+    const { ipc, selections, state } = setup({ saved: { "cluster-a": "claude" }, hold: true });
+
+    void state.setCluster("cluster-a");
+    void state.setCluster("cluster-b");
+    await selections.release(1);
+    await selections.release(0);
+
+    expect(state.getSnapshot()).toMatchObject({ clusterId: "cluster-b", providerId: undefined });
+    expect(ipc.calls).toHaveLength(0);
+  });
+
+  it("lets a provider picked while the saved one loads win, for the cluster being opened", async () => {
+    const { ipc, selections, state } = setup({ saved: { "cluster-b": "claude" }, hold: true });
+
+    void state.setCluster("cluster-a");
+    await selections.release();
+    void state.setCluster("cluster-b");
+    state.selectProvider("codex");
+    await selections.release();
+
+    expect(state.getSnapshot()).toMatchObject({ clusterId: "cluster-b", providerId: "codex" });
+    expect(Object.fromEntries(selections.values)).toEqual({ "cluster-b": "codex" });
+    expect(ipc.calls.map((call) => call.args)).toEqual([["codex"]]);
+  });
+
+  it("drops a saved provider that lands after dispose", async () => {
+    const { ipc, selections, state } = setup({ saved: { "cluster-a": "claude" }, hold: true });
+
+    void state.setCluster("cluster-a");
+    state.dispose();
+    await selections.release();
+
+    expect(state.getSnapshot().providerId).toBeUndefined();
+    expect(ipc.calls).toHaveLength(0);
+  });
+});
+
 describe("provider check", () => {
   it("probes, prepares the workspace, then scans it", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     expect(state.getSnapshot().provider).toEqual({ status: "loading" });
     expect(ipc.calls[0]).toMatchObject({ channel: "check-provider", args: ["claude"] });
 
@@ -196,7 +277,7 @@ describe("provider check", () => {
   it("neither prepares nor scans a missing provider", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "opencode" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     await ipc.resolve("check-provider", { status: "missing", error: "not found" });
 
     expect(state.getSnapshot().provider).toEqual({ status: "missing", error: "not found" });
@@ -206,7 +287,7 @@ describe("provider check", () => {
   it("reports a probe failure verbatim, without naming the provider", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     await ipc.reject("check-provider", new Error("EACCES: permission denied"));
 
     expect(state.getSnapshot().provider).toEqual({ status: "error", error: "EACCES: permission denied" });
@@ -215,7 +296,7 @@ describe("provider check", () => {
   it("reports a workspace preparation failure", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     await ipc.resolve("check-provider", READY);
     await ipc.reject("prepare-workspace", new Error("Forbidden path"));
 
@@ -225,7 +306,7 @@ describe("provider check", () => {
   it("discards the previous provider's probe when the selection changes mid-check", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     state.selectProvider("opencode");
     await ipc.resolve("check-provider", READY, 0);
 
@@ -239,9 +320,9 @@ describe("provider check", () => {
   it("discards a workspace that lands after the cluster changed", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     await ipc.resolve("check-provider", READY);
-    state.setCluster("cluster-b");
+    await state.setCluster("cluster-b");
     await ipc.resolve("prepare-workspace", WORKSPACE);
 
     expect(state.getSnapshot()).toMatchObject({ clusterId: "cluster-b", provider: { status: "idle" } });
@@ -251,7 +332,7 @@ describe("provider check", () => {
   it("checks the provider again on retry", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     await ipc.resolve("check-provider", { status: "error", error: "version probe timed out" });
     state.retry();
 
@@ -261,10 +342,10 @@ describe("provider check", () => {
 });
 
 describe("inventory scan", () => {
-  it("does not scan before the provider is ready", () => {
+  it("does not scan before the provider is ready", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     state.refreshInventory({ force: true });
 
     expect(ipc.count("list-provider-artifacts")).toBe(0);
@@ -399,7 +480,7 @@ describe("actions", () => {
   it("refuses an action without a selected provider", async () => {
     const { ipc, state } = setup();
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
 
     await expect(state.reset()).resolves.toMatchObject({ ok: false });
     expect(ipc.calls).toHaveLength(0);
@@ -462,14 +543,14 @@ describe("dispose", () => {
   it("drops every in-flight result and starts over on the next setCluster", async () => {
     const { ipc, state } = setup({ saved: { "cluster-a": "claude" } });
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     state.dispose();
     await ipc.resolve("check-provider", READY);
 
     expect(state.getSnapshot().provider).toEqual({ status: "idle" });
     expect(ipc.count("prepare-workspace")).toBe(0);
 
-    state.setCluster("cluster-a");
+    await state.setCluster("cluster-a");
     expect(ipc.count("check-provider")).toBe(2);
   });
 });

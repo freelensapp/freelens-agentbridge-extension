@@ -1,58 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadSelectedProvider, type StorageLike, saveSelectedProvider } from "./provider-selection";
+import { createProviderSelectionStore } from "./provider-selection";
 
-class MemoryStorage implements StorageLike {
-  readonly values = new Map<string, string>();
-  readonly removeItem = vi.fn((key: string) => this.values.delete(key));
+import type { IpcInvoke } from "../common/ipc-channels";
 
-  getItem(key: string): string | null {
-    return this.values.get(key) ?? null;
-  }
+describe("provider selection store", () => {
+  it("loads a cluster's selection from main", async () => {
+    const invoke = vi.fn(async () => "opencode") as unknown as IpcInvoke;
 
-  setItem(key: string, value: string): void {
-    this.values.set(key, value);
-  }
-}
-
-describe("provider selection", () => {
-  it("has no selection on first visit", () => {
-    expect(loadSelectedProvider("cluster-a", new MemoryStorage())).toBeUndefined();
+    await expect(createProviderSelectionStore(invoke).load("cluster-a")).resolves.toBe("opencode");
+    expect(invoke).toHaveBeenCalledWith("get-selected-provider", "cluster-a");
   });
 
-  it("restores selections per cluster", () => {
-    const storage = new MemoryStorage();
+  it("has no selection when main has none", async () => {
+    const invoke = vi.fn(async () => null) as unknown as IpcInvoke;
 
-    saveSelectedProvider("cluster-a", "opencode", storage);
-    saveSelectedProvider("cluster-b", "claude", storage);
-
-    expect(loadSelectedProvider("cluster-a", storage)).toBe("opencode");
-    expect(loadSelectedProvider("cluster-b", storage)).toBe("claude");
+    await expect(createProviderSelectionStore(invoke).load("cluster-a")).resolves.toBeUndefined();
   });
 
-  it("removes invalid saved providers", () => {
-    const storage = new MemoryStorage();
-    const key = "agentbridge-extension:selected-provider:cluster-a";
+  it("saves a cluster's selection in main", async () => {
+    const invoke = vi.fn(async () => undefined) as unknown as IpcInvoke;
 
-    storage.setItem(key, "removed-provider");
+    await createProviderSelectionStore(invoke).save("cluster-a", "claude");
 
-    expect(loadSelectedProvider("cluster-a", storage)).toBeUndefined();
-    expect(storage.removeItem).toHaveBeenCalledWith(key);
+    expect(invoke).toHaveBeenCalledWith("set-selected-provider", "cluster-a", "claude");
   });
 
-  it("tolerates unavailable storage", () => {
-    const storage: StorageLike = {
-      getItem() {
-        throw new Error("unavailable");
-      },
-      setItem() {
-        throw new Error("unavailable");
-      },
-      removeItem() {
-        throw new Error("unavailable");
-      },
-    };
+  it("tolerates main failing to load or save", async () => {
+    const invoke = vi.fn(async () => {
+      throw new Error("unavailable");
+    }) as unknown as IpcInvoke;
+    const store = createProviderSelectionStore(invoke);
 
-    expect(loadSelectedProvider("cluster-a", storage)).toBeUndefined();
-    expect(() => saveSelectedProvider("cluster-a", "opencode", storage)).not.toThrow();
+    await expect(store.load("cluster-a")).resolves.toBeUndefined();
+    await expect(store.save("cluster-a", "opencode")).resolves.toBeUndefined();
   });
 });

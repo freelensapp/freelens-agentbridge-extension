@@ -12,6 +12,7 @@ import {
   revealProviderWorkspace,
   writeProviderFile,
 } from "./provider-files";
+import { readSelectedProvider, writeSelectedProvider } from "./provider-selection-store";
 
 import type { ActionResult, IpcHandlers } from "../common/ipc-channels";
 
@@ -20,7 +21,7 @@ import type { ActionResult, IpcHandlers } from "../common/ipc-channels";
 // `pnpm dev` replaces them rather than colliding with the previous build's.
 export class AgentBridgeMainIpc extends Main.Ipc {}
 
-// Workspaces and settings stay under Electron's userData, where the v1 releases
+// Workspaces, settings and provider selections stay under Electron's userData, where the v1 releases
 // kept them, so an upgrade finds the files a user already edited.
 const userData = () => app.getPath("userData");
 
@@ -61,6 +62,8 @@ function createHandlers(): IpcHandlers {
     // Metadata only: the scan root is always the verified workdir for this
     // cluster and provider, never a path the renderer supplies.
     "list-provider-artifacts": (clusterId, providerId) => listProviderArtifacts(userData(), clusterId, providerId),
+    "get-selected-provider": (clusterId) => readSelectedProvider(userData(), clusterId),
+    "set-selected-provider": (clusterId, providerId) => writeSelectedProvider(userData(), clusterId, providerId),
   };
 }
 
