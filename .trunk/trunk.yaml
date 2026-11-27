@@ -98,7 +98,7 @@ lint:
     - actionlint@1.7.12
     - biome@2.6.4! # datasource=npm depName=@biomejs/biome
     - git-diff-check
-    - markdownlint@0.50.0
+    - markdownlint@0.50.1
     - prettier@3.9.9! # datasource=npm depName=prettier
     - shellcheck@0.11.0
     - shfmt@3.14.1
